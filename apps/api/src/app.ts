@@ -1,23 +1,31 @@
 import { randomUUID } from 'node:crypto';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { sql } from 'kysely';
 import type { Logger } from 'pino';
+import type { Config } from './config';
+import { authRouter, usersRouter } from './modules/m01-access';
+import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
 import { errorHandler, notFound } from './platform/errors';
+import type { Mailer } from './platform/mailer';
 
 export interface AppDeps {
   db: Db;
   logger: Logger;
+  mailer: Mailer;
+  config: Config;
 }
 
-export function createApp({ db, logger }: AppDeps) {
+export function createApp({ db, logger, mailer, config }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.use(helmet());
   app.use(express.json({ limit: '1mb' }));
+  app.use(cookieParser());
   app.use(
     pinoHttp({
       logger,
@@ -34,8 +42,16 @@ export function createApp({ db, logger }: AppDeps) {
     res.json({ status: 'ok' });
   });
 
-  // Module routers mount here: app.use('/api/v1/...', router) — one per module.
+  const api = express.Router();
+  api.use(requireSameOrigin(config.WEB_ORIGIN));
+  api.use(authenticate(db, config.SESSION_IDLE_MINUTES));
 
+  // One router per module.
+  const access = { db, mailer, config };
+  api.use('/auth', authRouter(access));
+  api.use('/users', usersRouter(access));
+
+  app.use('/api/v1', api);
   app.use(notFound);
   app.use(errorHandler);
   return app;

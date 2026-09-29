@@ -9,6 +9,8 @@ declare module 'vitest' {
   export interface ProvidedContext {
     ownerUrl: string;
     appUrl: string;
+    /** Superuser; tests use it only to inspect data that RLS hides from every app role. */
+    superUrl: string;
   }
 }
 
@@ -41,6 +43,10 @@ export async function setup(project: TestProject) {
 
   project.provide('ownerUrl', ownerUrl);
   project.provide('appUrl', appUrl);
+  project.provide(
+    'superUrl',
+    `postgres://${container.getUsername()}:${container.getPassword()}@${host}:${port}/cbam?sslmode=disable`,
+  );
 }
 
 export async function teardown() {
