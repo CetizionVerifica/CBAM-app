@@ -28,7 +28,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 |---|---|---|---|---|---|---|
 | M1 | Tenant and access | 1 Foundation | **Built** (R2 assignment API → M2); review: Ready | see below | see below | see below |
 | M2 | Client and installation registry | 1 Foundation | **Built** (R3 defaults → M4/M9; R6 period check done in M3); review: Ready | see below | see below | see below |
-| M3 | Reporting period manager | 1 Foundation | **Built** (R6 set-up copy → M5/M6; R7 guard → M11; D6); review: pending | see below | see below | see below |
+| M3 | Reporting period manager | 1 Foundation | **Built** (R6 set-up copy → M5/M6; R7 guard → M11; D6); review: Ready (see `M03.md`) | see below | see below | see below |
 | M4 | Reference library | 1 Foundation | **Built** (R3 period pinning done in M3; engine use of overrides → M10); review: see `M04.md` | see below | see below | see below |
 | M5 | Process and goods set-up | 2 Calculation core | Missing | — | — | — |
 | M6 | Direct emissions | 2 Calculation core | Missing | — | — | — |
@@ -68,7 +68,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | Routes | `GET/POST /api/v1/installations/:id/periods`, `GET/PATCH /periods/:id`, `POST /periods/:id/versions`, `POST /periods/:id/clone`, `POST /period-versions/:id/transitions` |
 | Tables | `reporting_period`, `period_version`, `period_status_change`; functions `app.assert_period_writable`, `app.register_period_table` (the lock every later period table attaches to) (migration `20260929000005_m03_periods.sql`) |
 | Screens | Reporting periods panel on the installation profile, Period overview (status, versions, history), open/clone/edit-dates and status dialogs |
-| Review | pending (`docs/reviews/M03.md`) |
+| Review | `docs/reviews/M03.md` (Ready; F1, F2 Medium open) |
 
 ## M4 — as built
 
