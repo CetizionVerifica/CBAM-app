@@ -4,6 +4,9 @@ import { SignInPage } from '@/features/access/SignInPage';
 import { TwoFactorSetupPage } from '@/features/access/TwoFactorSetupPage';
 import { VerifyPage } from '@/features/access/VerifyPage';
 import { PortfolioPage } from '@/features/portfolio/PortfolioPage';
+import { ClientPage } from '@/features/registry/ClientPage';
+import { InstallationPage, NewInstallationPage } from '@/features/registry/InstallationPages';
+import { NewClientPage } from '@/features/registry/NewClientPage';
 import { UsersPage } from '@/features/settings/UsersPage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
@@ -21,6 +24,10 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/', element: <PortfolioPage /> },
+          { path: '/clients/new', element: <NewClientPage /> },
+          { path: '/clients/:clientId', element: <ClientPage /> },
+          { path: '/clients/:clientId/installations/new', element: <NewInstallationPage /> },
+          { path: '/installations/:installationId', element: <InstallationPage /> },
           { path: '/settings/users', element: <UsersPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
