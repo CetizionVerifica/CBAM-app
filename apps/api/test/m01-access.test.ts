@@ -381,6 +381,7 @@ describe('G1 tenant isolation', () => {
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['bootstrap_tenant']));
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['act_as']));
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['session_user']));
+    expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['clear_login_failures']));
   });
 });
 
