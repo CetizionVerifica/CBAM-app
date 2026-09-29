@@ -4,7 +4,8 @@ import { type RouteObject, RouterProvider, createMemoryRouter } from 'react-rout
 import { vi } from 'vitest';
 import { ToastProvider } from './components/Toast';
 
-type Handler = (url: string, init?: RequestInit) => { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown };
+type Handler = (url: string, init?: RequestInit) => Reply | Promise<Reply>;
 
 /** Replaces fetch with a handler keyed on "METHOD /path". */
 export function mockApi(routes: Record<string, Handler | { status: number; body?: unknown }>) {
@@ -14,7 +15,7 @@ export function mockApi(routes: Record<string, Handler | { status: number; body?
     const path = input.replace('/api/v1', '');
     calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const route = routes[`${method} ${path}`];
-    const r = typeof route === 'function' ? route(input, init) : (route ?? { status: 404, body: { error: { code: 'not_found', message: 'Not found' } } });
+    const r = typeof route === 'function' ? await route(input, init) : (route ?? { status: 404, body: { error: { code: 'not_found', message: 'Not found' } } });
     return new Response(r.status === 204 ? null : JSON.stringify(r.body ?? {}), { status: r.status });
   });
   return calls;

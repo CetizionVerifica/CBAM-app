@@ -45,8 +45,8 @@ export const INSTALLATION_SECTIONS: SectionDef[] = [
       { name: 'city', label: 'City', required: true },
       { name: 'countryCode', label: 'Country', kind: 'country', required: true },
       { name: 'unLocode', label: 'UN/LOCODE', hint: '5 characters, starting with the country code, e.g. INJGA.' },
-      { name: 'latitude', label: 'Latitude of main emission source', kind: 'coordinate', hint: 'Decimal degrees, e.g. 22.470000.' },
-      { name: 'longitude', label: 'Longitude of main emission source', kind: 'coordinate', hint: 'Decimal degrees, e.g. 70.057700.' },
+      { name: 'latitude', label: 'Latitude of main emission source', kind: 'coordinate', unit: '°', hint: 'Decimal degrees, north positive, e.g. 22.470000.' },
+      { name: 'longitude', label: 'Longitude of main emission source', kind: 'coordinate', unit: '°', hint: 'Decimal degrees, east positive, e.g. 70.057700.' },
     ],
   },
   {

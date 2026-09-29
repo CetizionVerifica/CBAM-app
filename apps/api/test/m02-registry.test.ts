@@ -355,3 +355,33 @@ describe('G1 across tenants', () => {
     expect((await other.a.post(`/api/v1/clients/${c.id}/installations`, installationBody())).status).toBe(404);
   });
 });
+
+// Regression tests for the findings in docs/reviews/M02.md.
+describe('review M2 fixes', () => {
+  it('F1: duplicates that differ only in spacing, case or punctuation are caught', async () => {
+    const c = await newClient(consultant.a, { legalName: 'Kaveri Fertilisers Ltd' });
+    for (const variant of ['Kaveri  Fertilisers Ltd.', 'KAVERI FERTILISERS LTD', 'Kaveri-Fertilisers, Ltd']) {
+      expect((await consultant.a.post('/api/v1/clients', clientBody({ legalName: variant }))).status).toBe(409);
+    }
+    await newInstallation(consultant.a, c.id, { nameEn: 'Urea Plant 2' });
+    expect((await consultant.a.post(`/api/v1/clients/${c.id}/installations`, installationBody({ nameEn: 'urea plant-2' }))).status).toBe(409);
+    // Different words are still different.
+    expect((await consultant.a.post('/api/v1/clients', clientBody({ legalName: 'Kaveri Fertilisers Holdings Ltd' }))).status).toBe(201);
+  });
+
+  it('F2: an importer of a deleted client is gone too', async () => {
+    const c = await newClient(consultant.a);
+    const imp = (await consultant.a.post(`/api/v1/clients/${c.id}/importers`, { name: 'Imp', eori: 'DE123' })).body.importer;
+    await consultant.a.raw.delete(`/api/v1/clients/${c.id}`).set('Origin', 'http://localhost:5173');
+    expect((await consultant.a.patch(`/api/v1/importers/${imp.id}`, { name: 'Edited' })).status).toBe(404);
+    expect((await consultant.a.raw.delete(`/api/v1/importers/${imp.id}`).set('Origin', 'http://localhost:5173')).status).toBe(404);
+  });
+
+  it('F7: the audit entry uses the button verb', async () => {
+    const c = await newClient(consultant.a);
+    const imp = (await consultant.a.post(`/api/v1/clients/${c.id}/importers`, { name: 'Imp', eori: 'DE456' })).body.importer;
+    await consultant.a.patch(`/api/v1/importers/${imp.id}`, { name: 'Imp 2' });
+    const { rows } = await sql<{ action: string }>`select action from audit.audit_log where record_id = ${imp.id} order by id`.execute(t.su);
+    expect(rows.map((r) => r.action)).toEqual(['Add importer', 'Save importer']);
+  });
+});

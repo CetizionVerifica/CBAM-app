@@ -55,8 +55,16 @@ export function registryRouter({ db }: { db: Db }): Router {
     if (!row) throw notFound('installation');
     return row;
   };
+  // The parent client must be live too: a deleted client's importers are gone (review M2 F2).
   const loadImporter = async (tx: Tx, id: string) => {
-    const row = await tx.selectFrom('eu_importer').selectAll().where('id', '=', id).where('deleted_at', 'is', null).executeTakeFirst();
+    const row = await tx
+      .selectFrom('eu_importer as e')
+      .innerJoin('client as c', 'c.id', 'e.client_id')
+      .selectAll('e')
+      .where('e.id', '=', id)
+      .where('e.deleted_at', 'is', null)
+      .where('c.deleted_at', 'is', null)
+      .executeTakeFirst();
     if (!row) throw notFound('importer');
     return row;
   };
@@ -256,7 +264,7 @@ export function registryRouter({ db }: { db: Db }): Router {
   router.patch('/importers/:id', requirePermission('registry.write'), async (req, res) => {
     const id = idParam(req.params.id, 'importer');
     const patch = ImporterPatch.parse(req.body);
-    const importer = await withContext(db, contextOf(req, 'Edit importer'), async (tx) => {
+    const importer = await withContext(db, contextOf(req, 'Save importer'), async (tx) => {
       const existing = await loadImporter(tx, id);
       ImporterInput.parse({ ...fromRow(existing, IMPORTER_COLUMNS), ...patch });
       return tx

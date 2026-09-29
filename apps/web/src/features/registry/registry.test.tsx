@@ -75,7 +75,11 @@ describe('installation profile', () => {
     await userEvent.clear(locode);
     await userEvent.type(locode, 'TRIZM');
     fireEvent.blur(locode);
-    await waitFor(() => expect(patches(calls)).toEqual([{ countryCode: 'TR', unLocode: 'TRIZM' }]));
+    // Every save is a valid record (never TR with INJGA), and the result is TR + TRIZM.
+    await waitFor(() => expect(Object.assign({}, ...(patches(calls) as object[]))).toMatchObject({ countryCode: 'TR', unLocode: 'TRIZM' }));
+    for (const p of patches(calls) as { countryCode?: string; unLocode?: string }[]) {
+      expect(p.countryCode === 'TR' && p.unLocode === 'INJGA').toBe(false);
+    }
   });
 
   it('is read-only for a reviewer: no edits, no delete', async () => {
@@ -83,6 +87,52 @@ describe('installation profile', () => {
     const city = await screen.findByLabelText(/^City/);
     expect(city).toHaveAttribute('readonly');
     expect(screen.queryByRole('button', { name: 'Delete installation' })).not.toBeInTheDocument();
+  });
+});
+
+describe('review M2 fixes', () => {
+  it('F5: saves never overlap, so a slow response cannot bring back an older value', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let first = true;
+    const calls = mockApi({
+      'GET /auth/me': me('consultant'),
+      'GET /installations/i1': { status: 200, body: { installation } },
+      'GET /clients/c1': { status: 200, body: { client: { id: 'c1', legalName: 'Aurum Metals Ltd', countryCode: 'IN', city: 'Mumbai' }, installations: [installation], importers: [] } },
+      'GET /reference/countries': { status: 200, body: { countries: [{ code: 'IN', name: 'India' }] } },
+      'PATCH /installations/i1': async (_url, init) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        const body = JSON.parse(String(init?.body));
+        // The first response is slow and describes only what it saved.
+        if (first) {
+          first = false;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        inFlight--;
+        return { status: 200, body: { installation: { ...installation, ...body } } };
+      },
+    });
+    renderRoutes([{ element: <RequireSession />, children: [{ path: '/installations/:installationId', element: <InstallationPage /> }] }], '/installations/i1');
+    const city = await screen.findByLabelText(/^City/);
+    await userEvent.clear(city);
+    await userEvent.type(city, 'First');
+    fireEvent.blur(city);
+    await waitFor(() => expect(patches(calls).length).toBeGreaterThan(0));
+    const street = screen.getByLabelText(/^Street/);
+    fireEvent.change(street, { target: { value: 'Plot 9' } });
+    fireEvent.blur(street);
+    await waitFor(() => expect(Object.assign({}, ...(patches(calls) as object[]))).toMatchObject({ city: 'First', street: 'Plot 9' }), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(maxInFlight).toBe(1);
+    expect(screen.getByLabelText(/^Street/)).toHaveValue('Plot 9');
+    expect(screen.getByLabelText(/^City/)).toHaveValue('First');
+  });
+
+  it('F6: coordinates show their unit', async () => {
+    installationRoutes('consultant');
+    await screen.findByLabelText(/^Latitude/);
+    expect(screen.getAllByText('°')).toHaveLength(2);
   });
 });
 

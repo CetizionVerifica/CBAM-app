@@ -16,6 +16,8 @@ export interface FieldDef {
   hint?: string;
   /** Spans both columns of the two-column form. */
   wide?: boolean;
+  /** Unit shown next to the value (design system 3.4: units next to every number). */
+  unit?: string;
 }
 
 export interface SectionDef {
@@ -52,6 +54,9 @@ export function RecordForm(props: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: 'idle' });
   const saved = useRef<Values>(values);
+  // Saves run one after another, so responses cannot arrive out of order and put an
+  // older record back into the form (review M2 F5).
+  const queue = useRef<Promise<void>>(Promise.resolve());
   // Server updates refresh the form without touching fields the user is still editing.
   const form = useForm<Values>({
     resolver: zodResolver(schema) as never,
@@ -67,7 +72,12 @@ export function RecordForm(props: Props) {
   // On blur: send every field that differs from the last saved copy, once the whole record
   // is valid. Cross-field rules (UN/LOCODE vs country) can need two fields changed
   // together, so saving one field at a time could never get there.
-  const saveField = async () => {
+  const saveField = () => {
+    queue.current = queue.current.then(saveChanges);
+    return queue.current;
+  };
+
+  const saveChanges = async () => {
     if (props.mode !== 'edit' || readOnly) return;
     const current = form.getValues();
     const patch = Object.fromEntries(Object.entries(current).filter(([k, v]) => v !== saved.current[k]));
@@ -137,6 +147,13 @@ export function RecordForm(props: Props) {
                         </option>
                       ))}
                     </select>
+                  ) : f.unit ? (
+                    <div className="flex">
+                      <input {...reg} {...common} className={cn(common.className, 'rounded-r-none')} type="text" inputMode="decimal" />
+                      <span className="grid min-w-10 place-items-center rounded-r-input border border-l-0 border-rule-strong bg-surface-sunken px-2 text-caption text-ink-muted">
+                        {f.unit}
+                      </span>
+                    </div>
                   ) : (
                     <input
                       {...reg}

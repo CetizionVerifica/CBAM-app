@@ -312,8 +312,15 @@ create table client (
   unique (id, tenant_id)
 );
 select app.register_business_table('public.client');
+-- Duplicate key for names: lower case with whitespace and punctuation removed, so
+-- "Kaveri  Fertilisers Ltd." matches "Kaveri Fertilisers Ltd" (review M2 F1). Works for
+-- any script: only spaces and punctuation are dropped, letters are kept.
+create function app.name_key(p text) returns text
+  language sql immutable parallel safe
+  as $$ select regexp_replace(lower(p), '[[:space:][:punct:]]+', '', 'g') $$;
+
 -- M2-R5: same legal name in the same country is the same operator.
-create unique index client_unique_name on client (tenant_id, lower(legal_name), country_code) where deleted_at is null;
+create unique index client_unique_name on client (tenant_id, app.name_key(legal_name), country_code) where deleted_at is null;
 
 -- ---------------------------------------------------------------------------
 -- installation. Every column maps to a sheet A_InstData cell (docs/mappings/template-A_InstData.md).
@@ -353,7 +360,7 @@ create table installation (
 select app.register_business_table('public.installation');
 create index installation_client on installation (client_id);
 -- M2-R5: one live installation per name within a client.
-create unique index installation_unique_name on installation (client_id, lower(name_en)) where deleted_at is null;
+create unique index installation_unique_name on installation (client_id, app.name_key(name_en)) where deleted_at is null;
 
 -- ---------------------------------------------------------------------------
 -- eu_importer (M2-R1): EU importers or indirect customs representatives a client serves.
@@ -640,5 +647,6 @@ drop function app.visible_user_ids();
 drop function app.accessible_installation_ids();
 drop function app.accessible_client_ids();
 drop function app.forbid_client_change();
+drop function app.name_key(text);
 drop table ref_country;
 revoke create on schema app from cbam_auth;
