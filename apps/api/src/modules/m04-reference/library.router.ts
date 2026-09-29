@@ -24,6 +24,7 @@ import { mapDbError } from '../../platform/db-errors';
 import { type Db, type Tx, withContext } from '../../platform/db';
 import { AppError } from '../../platform/errors';
 import {
+  checkDefaultValues,
   cnRecord,
   currentVersion,
   datasetState,
@@ -239,11 +240,17 @@ export function libraryRouter({ db }: { db: Db }): Router {
     return row;
   };
 
+  const assertDefaultValue = async (tx: Tx, versionId: string, f: { kind: string; subject: string; unit: string }) => {
+    const p = (await checkDefaultValues(tx, versionId, [f])).get(0);
+    if (p) throw new AppError(400, 'validation_failed', 'Some fields are not valid. Fix them and try again.', undefined, [{ path: [p.field], message: p.message }]);
+  };
+
   router.post('/library/versions/:id/factors', ...write, async (req, res) => {
     const versionId = idParam(req.params.id, 'library version');
     const input = withSi(FactorInput.parse(req.body));
     const row = await withContext(db, contextOf(req, 'Add factor'), async (tx) => {
       await loadDraft(tx, versionId);
+      await assertDefaultValue(tx, versionId, input);
       return tx
         .insertInto('library_factor')
         .values({ library_version_id: versionId, ...factorColumns(input) })
@@ -263,6 +270,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
       const existing = factorDto(current);
       // The whole record must stay valid (per-kind rules on the merged record).
       const merged = withSi(FactorInput.parse({ ...FactorFields.parse(existing), ...patch }));
+      await assertDefaultValue(tx, current.library_version_id, merged);
       return tx
         .updateTable('library_factor')
         .set(factorColumns(merged))
@@ -371,6 +379,10 @@ export function libraryRouter({ db }: { db: Db }): Router {
           errors.push({ row: lines[i]!, column: 'country_code', message: `"${r.countryCode}" is not a country code in the list.` });
         }
       });
+      for (const [i, p] of await checkDefaultValues(tx, versionId, parsed.rows)) {
+        errors.push({ row: lines[i]!, column: p.field, message: p.message });
+      }
+      errors.sort((a, b) => a.row - b.row);
     } else {
       const cats = new Set(
         (await tx.selectFrom('goods_category').select('code').where('library_version_id', '=', versionId).execute()).map((c) => c.code),

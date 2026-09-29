@@ -27,7 +27,7 @@ What a file replaces:
 | Column | Required | Values | Rule |
 |---|---|---|---|
 | `kind` | Yes | `emission_factor`, `ncv`, `gwp`, `grid_factor`, `default_see` | |
-| `subject` | Yes | Fuel or material (`Natural gas`), gas (`N2O`), `electricity`, or CN code for `default_see` | `default_see`: 8-digit CN code |
+| `subject` | Yes | Fuel or material (`Natural gas`), gas (`N2O`), `electricity`, or CN code for `default_see` | `default_see`: an 8-digit CN code that is in the draft's CN-code list |
 | `country_code` | Grid: yes | ISO code from the template country list | Required for `grid_factor`. Optional for the others (for example, country-specific default values) |
 | `region` | No | Free text | Only for `grid_factor` |
 | `year` | Grid: yes | 1990–2100 | Required for `grid_factor` |
@@ -47,7 +47,7 @@ Units per kind (unit ids from `packages/shared/src/units.ts`):
 | `ncv` | `GJ/t`, `MJ/kg`, `TJ/t`, `GJ/Nm3`, `GJ/kNm3`, `TJ/Nm3` | `TJ/t` or `TJ/Nm3` |
 | `gwp` | `tCO2e/tGHG` | `tCO2e/tGHG` |
 | `grid_factor` | `tCO2/MWh`, `kgCO2/kWh`, `gCO2/kWh` | `tCO2/MWh` |
-| `default_see` | `tCO2e/t`, `kgCO2e/t` | `tCO2e/t` |
+| `default_see` | Per the CN code's goods category: `tCO2e/t` or `kgCO2e/t` for goods in t; `tCO2e/MWh` for electricity (27160000) | `tCO2e/t` or `tCO2e/MWh` |
 
 Example:
 ```csv

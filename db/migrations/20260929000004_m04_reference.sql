@@ -1294,6 +1294,7 @@ revoke execute on function app.clone_library_content(uuid, uuid) from public;
 grant execute on function app.clone_library_content(uuid, uuid) to cbam_app;
 
 -- ---------------------------------------------------------------------------
+-- `(select …)` evaluates the check once per statement, not once per row (review M4 F18).
 -- Policies (G1, G2, D1, D12). Library: everyone reads; only the operator tenant's platform
 -- admins write.
 -- ---------------------------------------------------------------------------
@@ -1304,9 +1305,9 @@ begin
   foreach t in array array['library_version', 'goods_category', 'production_route', 'route_relevant_precursor',
                            'qualifying_parameter_def', 'cn_code', 'library_factor', 'template_version'] loop
     execute format('create policy %I on %I for select to cbam_app using (true)', t || '_read', t);
-    execute format('create policy %I on %I for insert to cbam_app with check (app.is_library_admin())', t || '_insert', t);
-    execute format('create policy %I on %I for update to cbam_app using (app.is_library_admin()) with check (app.is_library_admin())', t || '_update', t);
-    execute format('create policy %I on %I for delete to cbam_app using (app.is_library_admin())', t || '_delete', t);
+    execute format('create policy %I on %I for insert to cbam_app with check ((select app.is_library_admin()))', t || '_insert', t);
+    execute format('create policy %I on %I for update to cbam_app using ((select app.is_library_admin())) with check ((select app.is_library_admin()))', t || '_update', t);
+    execute format('create policy %I on %I for delete to cbam_app using ((select app.is_library_admin()))', t || '_delete', t);
   end loop;
 end
 $$;
@@ -1315,7 +1316,7 @@ grant select, insert, update, delete on library_version, goods_category, product
 grant select, insert on template_version to cbam_app;
 
 create policy library_import_admin on library_import for all to cbam_app
-  using (app.is_library_admin()) with check (app.is_library_admin());
+  using ((select app.is_library_admin())) with check ((select app.is_library_admin()));
 grant select, insert, update, delete on library_import to cbam_app;
 
 -- Overrides: readable with the client; consultants and admins propose; the proposer can

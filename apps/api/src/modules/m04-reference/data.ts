@@ -10,7 +10,10 @@ import {
   type LibraryDiff,
   type LibraryFactor,
   type SeeComponent,
+  UNITS,
   factorKey,
+  isUnitId,
+  unitsFor,
 } from '@cbam/shared';
 import type { Selectable } from 'kysely';
 import type { LibraryFactor as FactorTable } from '../../db-types';
@@ -77,16 +80,51 @@ export async function loadVersion(tx: Tx, id: string) {
 
 /**
  * API-side lock check (G2); the database trigger is the backstop (M4-R2). Locks the version
- * row for the rest of the transaction, so draft writes, imports and publishing run one at a
+ * row (FOR NO KEY UPDATE, so M3's foreign-key pins are not blocked) for the rest of the transaction, so draft writes, imports and publishing run one at a
  * time and a publish never races an edit (review M4 F1, F5).
  */
 export async function loadDraft(tx: Tx, id: string) {
-  const v = await tx.selectFrom('library_version').selectAll().where('id', '=', id).forUpdate().executeTakeFirst();
+  const v = await tx.selectFrom('library_version').selectAll().where('id', '=', id).forNoKeyUpdate().executeTakeFirst();
   if (!v) throw notFound('library version');
   if (v.status !== 'draft') {
     throw new AppError(409, 'library_published', `Library version ${v.code} is published and cannot be changed. Create a new draft version.`);
   }
   return v;
+}
+
+/**
+ * Default values are per unit of the good (review M4 F3): the CN code must be in the version,
+ * and the unit must match its goods category (t → tCO₂e/t, MWh → tCO₂e/MWh). Returns, per
+ * input index, the field and message of the first problem.
+ */
+export async function checkDefaultValues(
+  tx: Tx,
+  versionId: string,
+  rows: { kind: string; subject: string; unit: string }[],
+): Promise<Map<number, { field: 'subject' | 'unit'; message: string }>> {
+  const problems = new Map<number, { field: 'subject' | 'unit'; message: string }>();
+  if (!rows.some((r) => r.kind === 'default_see')) return problems;
+  const cn = await tx
+    .selectFrom('cn_code as c')
+    .innerJoin('goods_category as g', (j) => j.onRef('g.code', '=', 'c.goods_category_code').onRef('g.library_version_id', '=', 'c.library_version_id'))
+    .select(['c.code', 'g.name', 'g.unit'])
+    .where('c.library_version_id', '=', versionId)
+    .execute();
+  const byCode = new Map(cn.map((c) => [c.code, c]));
+  rows.forEach((r, i) => {
+    if (r.kind !== 'default_see') return;
+    const good = byCode.get(r.subject);
+    if (!good) {
+      problems.set(i, { field: 'subject', message: `${r.subject} is not a CN code in this library version.` });
+      return;
+    }
+    const dimension = good.unit === 'MWh' ? 'see_electricity' : 'see';
+    if (!isUnitId(r.unit) || UNITS[r.unit].dimension !== dimension) {
+      const allowed = unitsFor(dimension).map((u) => UNITS[u].label).join(' or ');
+      problems.set(i, { field: 'unit', message: `${good.name} is reported per ${good.unit}: use ${allowed}.` });
+    }
+  });
+  return problems;
 }
 
 /** The version new periods pin (M4-R3): the most recently published one. */
@@ -168,6 +206,9 @@ export const factorRecord = (f: LibraryFactor): DiffRecord => ({
   fields: {
     value: f.value,
     unit: f.unit,
+    // The engine uses the SI value, so a change to it alone must show in the diff (review M4 F20).
+    valueSi: f.valueSi,
+    siUnit: f.siUnit,
     validFrom: f.validFrom,
     validTo: f.validTo,
     plausibleMin: f.plausibleMin,
@@ -186,6 +227,7 @@ export const factorRowRecord = (f: FactorRow): DiffRecord =>
     year: f.year ?? null,
     component: f.component ?? null,
     value: new Decimal(f.value).toString(),
+    valueSi: new Decimal(f.valueSi).toString(),
     plausibleMin: dec(f.plausibleMin ?? null),
     plausibleMax: dec(f.plausibleMax ?? null),
     validTo: f.validTo ?? null,

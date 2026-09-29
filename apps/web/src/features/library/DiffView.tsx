@@ -14,6 +14,8 @@ const DATASET_LABELS: Record<DiffDataset, string> = {
 const FIELD_LABELS: Record<string, string> = {
   value: 'Value',
   unit: 'Unit',
+  valueSi: 'SI value',
+  siUnit: 'SI unit',
   validFrom: 'Valid from',
   validTo: 'Valid to',
   plausibleMin: 'Plausible from',

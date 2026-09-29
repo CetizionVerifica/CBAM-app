@@ -222,7 +222,7 @@ describe('M4-R3 versions are pinned, AT1', () => {
 
     const diff = await admin.a.get(`/api/v1/library/versions/${draft.id}/diff`);
     expect(diff.body.diff.factors.changed).toEqual([
-      expect.objectContaining({ label: 'Emission factor: Natural gas', fields: ['source', 'value'] }),
+      expect.objectContaining({ label: 'Emission factor: Natural gas', fields: ['source', 'value', 'valueSi'] }),
     ]);
     expect(diff.body.diff.cn_codes).toBeUndefined();
 
@@ -287,7 +287,7 @@ describe('M4-R4 import with diff preview, AT2', () => {
     expect(rowCount).toBe(4);
     expect(diff.added.map((r: { label: string }) => r.label)).toEqual(['Grid emission factor: electricity, IN, 2026', 'Grid emission factor: electricity, TR, 2026']);
     expect(diff.changed.map((r: { label: string; fields: string[] }) => [r.label, r.fields])).toEqual([
-      ['Global warming potential: CF4', ['source', 'value']],
+      ['Global warming potential: CF4', ['source', 'value', 'valueSi']],
     ]);
     // C2F6 is a GWP not in the file, so it would be removed; emission factors are untouched.
     expect(diff.removed.map((r: { label: string }) => r.label)).toEqual(['Global warming potential: C2F6']);
@@ -523,6 +523,41 @@ describe('F3 default values for electricity', () => {
     });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.factor).toMatchObject({ valueSi: '0.5', siUnit: 'tCO2e/MWh' });
+  });
+
+  it('ties the unit to the CN code’s goods category, in the form, the import and overrides', async () => {
+    const draft = await newDraft();
+    const post = (over: Record<string, unknown>) =>
+      admin.a.post(`/api/v1/library/versions/${draft.id}/factors`, {
+        kind: 'default_see', component: 'direct', value: '1.9', validFrom: '2026-01-01', source: 'Commission defaults', ...over,
+      });
+    const steelMwh = await post({ subject: '72081000', unit: 'tCO2e/MWh' });
+    expect(steelMwh.status).toBe(400);
+    expect(steelMwh.body.error.issues).toEqual([{ path: ['unit'], message: 'Iron or steel products is reported per t: use tCO₂e/t or kgCO₂e/t.' }]);
+    const elecT = await post({ subject: '27160000', unit: 'tCO2e/t' });
+    expect(elecT.body.error.issues).toEqual([{ path: ['unit'], message: 'Electricity (export to EU) is reported per MWh: use tCO₂e/MWh.' }]);
+    const unknown = await post({ subject: '12345678', unit: 'tCO2e/t' });
+    expect(unknown.body.error.issues).toEqual([{ path: ['subject'], message: '12345678 is not a CN code in this library version.' }]);
+    expect((await post({ subject: '72081000', unit: 'tCO2e/t' })).status).toBe(201);
+
+    const imp = await admin.a.post(`/api/v1/library/versions/${draft.id}/imports`, {
+      dataset: 'factors',
+      fileName: 'defaults.csv',
+      content: `${FACTOR_HEADER}\ndefault_see,72081000,,,,direct,1.9,tCO2e/t,2026-01-01,,,,EU,\ndefault_see,72081000,,,,indirect,0.3,tCO2e/MWh,2026-01-01,,,,EU,`,
+    });
+    expect(imp.status).toBe(400);
+    expect(imp.body.error.details.errors).toEqual([
+      { row: 3, column: 'unit', message: 'Iron or steel products is reported per t: use tCO₂e/t or kgCO₂e/t.' },
+    ]);
+  });
+
+  it('F20: a change to the SI value alone shows in the publish diff', async () => {
+    const draft = await newDraft();
+    const gas = natGas(await factors(draft.id));
+    const ctx = { tenantId: admin.tenantId, userId: admin.adminId, userRole: 'platform_admin' as const, requestId: 'test' };
+    await withContext(t.db, ctx, (tx) => tx.updateTable('library_factor').set({ value_si: '60' }).where('id', '=', gas.id).execute());
+    const diff = (await admin.a.get(`/api/v1/library/versions/${draft.id}/diff`)).body.diff;
+    expect(diff.factors.changed[0].fields).toEqual(['valueSi']);
   });
 });
 

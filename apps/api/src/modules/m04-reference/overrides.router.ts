@@ -21,7 +21,7 @@ import { contextOf, requireAuth, requirePermission } from '../../platform/auth';
 import { mapDbError } from '../../platform/db-errors';
 import { type Db, type Tx, withContext } from '../../platform/db';
 import { AppError } from '../../platform/errors';
-import { currentVersion, factorDto, loadFactors } from './data';
+import { checkDefaultValues, currentVersion, factorDto, loadFactors } from './data';
 
 const Id = z.uuid();
 const notFound = (what: string) => new AppError(404, 'not_found', `This ${what} does not exist or you do not have access to it.`);
@@ -128,6 +128,10 @@ export function overridesRouter({ db }: { db: Db }): Router {
     const ctx = contextOf(req, 'Propose factor override');
     const [override] = await withContext(db, ctx, async (tx) => {
       await loadClient(tx, clientId);
+      // A default-value override follows the same unit rule as the library (review M4 F3).
+      const current = await currentVersion(tx);
+      const p = current && (await checkDefaultValues(tx, current.id, [input])).get(0);
+      if (p) throw new AppError(400, 'validation_failed', 'Some fields are not valid. Fix them and try again.', undefined, [{ path: [p.field], message: p.message }]);
       const row = await tx
         .insertInto('client_factor_override')
         .values({
