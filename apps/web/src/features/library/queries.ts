@@ -25,7 +25,8 @@ export const libraryKeys = {
 export const useLibraryVersions = () =>
   useQuery({
     queryKey: libraryKeys.versions,
-    queryFn: async () => (await api.get<{ versions: LibraryVersionSummary[] }>('/library/versions')).versions,
+    // canEdit: platform admin of the operator tenant (decision D12), decided by the API.
+    queryFn: () => api.get<{ versions: LibraryVersionSummary[]; canEdit: boolean }>('/library/versions'),
   });
 
 export const useFactors = (versionId: string) =>

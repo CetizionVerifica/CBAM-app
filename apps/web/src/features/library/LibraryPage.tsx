@@ -1,4 +1,4 @@
-import { CreateLibraryVersionRequest, type LibraryVersionSummary, can } from '@cbam/shared';
+import { CreateLibraryVersionRequest, type LibraryVersionSummary } from '@cbam/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { CircleDashed, Lock } from 'lucide-react';
@@ -16,7 +16,6 @@ import { useToast } from '@/components/Toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { applyServerError } from '@/lib/forms';
-import { useMe } from '@/lib/session';
 import { CnCodesTab, GoodsTab, TemplatesTab } from './ConfigTabs';
 import { FactorTab } from './FactorTab';
 import { ImportDialog } from './ImportDialog';
@@ -43,18 +42,18 @@ export function VersionBadge({ version }: { version: Pick<LibraryVersionSummary,
 
 /** M4 reference library (design system 6.12). Everyone reads; the platform admin edits drafts and publishes. */
 export function LibraryPage() {
-  const me = useMe().data!;
   const qc = useQueryClient();
   const toast = useToast();
   const versions = useLibraryVersions();
   const [params, setParams] = useSearchParams();
   const [dialog, setDialog] = useState<'new' | 'import' | 'publish' | 'discard' | null>(null);
-  const canWrite = can(me.user.role, 'library.write');
 
   if (versions.isPending) return <div className="p-6"><SkeletonRows rows={10} /></div>;
   if (versions.isError) return <div className="p-6"><ErrorState message={versions.error.message} /></div>;
 
-  const list = versions.data;
+  const list = versions.data.versions;
+  // Display only; the API and RLS enforce it (G2).
+  const canWrite = versions.data.canEdit;
   const draft = list.find((v) => v.status === 'draft');
   const selected = list.find((v) => v.id === params.get('version')) ?? list.find((v) => v.isCurrent) ?? list[0];
   const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab')! : TABS[0]!.id;

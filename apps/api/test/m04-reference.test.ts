@@ -51,6 +51,8 @@ const natGas = (fs: Awaited<ReturnType<typeof factors>>) => fs.find((f) => f.kin
 
 beforeAll(async () => {
   admin = await adminOfNewTenant(t);
+  // Decision D12: only the operator tenant's admins maintain the shared library.
+  await sql`select auth.set_platform_operator(${admin.slug})`.execute(t.owner);
   const c = await inviteAndAccept(t, admin.a, 'consultant', 'Cara Consultant');
   consultant = { ...(await signInWithMfa(t, c.email)), ...c };
   const k = await inviteAndAccept(t, admin.a, 'contributor', 'Dev Contributor');
@@ -360,6 +362,48 @@ describe('M4-R5 who may publish, AT3', () => {
     await expect(
       withContext(t.db, ctx, (tx) => tx.insertInto('library_version').values({ code: `c-${randomUUID().slice(0, 6)}` }).execute()),
     ).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('F2: the admin of another tenant cannot change the shared library', async () => {
+    const other = await adminOfNewTenant(t);
+    const list = await other.a.get('/api/v1/library/versions');
+    expect(list.status).toBe(200);
+    expect(list.body.canEdit).toBe(false);
+    expect((await admin.a.get('/api/v1/library/versions')).body.canEdit).toBe(true);
+    const res = await other.a.post('/api/v1/library/versions', { code: `x-${randomUUID().slice(0, 6)}` });
+    expect(res.status).toBe(403);
+    expect(res.body.error.message).toBe('Only platform admins of the platform operator can change the reference library.');
+
+    const draft = await newDraft();
+    expect((await other.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: draft.code, diffFingerprint: await reviewed(draft.id) })).status).toBe(403);
+    const ctx = { tenantId: other.tenantId, userId: other.adminId, userRole: 'platform_admin' as const, requestId: 'test' };
+    await expect(
+      withContext(t.db, ctx, (tx) => tx.insertInto('library_version').values({ code: `x-${randomUUID().slice(0, 6)}` }).execute()),
+    ).rejects.toMatchObject({ code: '42501' });
+    const r = await withContext(t.db, ctx, (tx) => tx.updateTable('library_version').set({ status: 'published' }).where('id', '=', draft.id).executeTakeFirst());
+    expect(Number(r.numUpdatedRows)).toBe(0);
+  });
+
+  it('F2: the app role cannot make its tenant the operator; the owner CLI function can, and it is audited', async () => {
+    const other = await adminOfNewTenant(t);
+    const ctx = { tenantId: other.tenantId, userId: other.adminId, userRole: 'platform_admin' as const, requestId: 'test' };
+    await expect(withContext(t.db, ctx, (tx) => sql`select auth.set_platform_operator(${other.slug})`.execute(tx))).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      withContext(t.db, ctx, (tx) => sql`update tenant set is_platform_operator = true where id = ${other.tenantId}`.execute(tx)),
+    ).rejects.toMatchObject({ code: '42501' });
+
+    // Move the role and back; exactly one operator at a time.
+    await sql`select auth.set_platform_operator(${other.slug})`.execute(t.owner);
+    const { rows } = await sql<{ slug: string }>`select slug from tenant where is_platform_operator`.execute(t.su);
+    expect(rows).toEqual([{ slug: other.slug }]);
+    expect((await admin.a.get('/api/v1/library/versions')).body.canEdit).toBe(false);
+    await sql`select auth.set_platform_operator(${admin.slug})`.execute(t.owner);
+    const audit = await sql<{ action: string; changed_fields: string[] }>`
+      select action, changed_fields from audit.audit_log where table_name = 'public.tenant' and record_id = ${other.tenantId} and op = 'UPDATE' order by id`.execute(t.su);
+    expect(audit.rows).toEqual([
+      { action: 'Set platform operator', changed_fields: ['is_platform_operator'] },
+      { action: 'Set platform operator', changed_fields: ['is_platform_operator'] },
+    ]);
   });
 
   it('every role can read the library', async () => {

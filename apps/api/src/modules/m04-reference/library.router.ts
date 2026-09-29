@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import express, { Router } from 'express';
+import express, { type Request, type RequestHandler, Router } from 'express';
 import { sql } from 'kysely';
 import { z } from 'zod';
 import {
@@ -17,6 +17,7 @@ import {
   PublishRequest,
   RelevantPrecursorsRequest,
   type TemplateVersionEntry,
+  can,
 } from '@cbam/shared';
 import { contextOf, requireAuth, requirePermission } from '../../platform/auth';
 import { mapDbError } from '../../platform/db-errors';
@@ -66,7 +67,18 @@ const FACTOR_UNIQUE = {
 export function libraryRouter({ db }: { db: Db }): Router {
   const router = Router();
   router.use('/library', requireAuth);
-  const write = requirePermission('library.write');
+
+  /** Platform admin of the operator tenant (decision D12); RLS checks the same (app.is_library_admin). */
+  const isLibraryAdmin = async (req: Request) =>
+    can(req.auth!.user.role, 'library.write') &&
+    (await withContext(db, contextOf(req), (tx) =>
+      tx.selectFrom('tenant').select('is_platform_operator').where('id', '=', req.auth!.user.tenantId).executeTakeFirst(),
+    ))?.is_platform_operator === true;
+  const requireOperator: RequestHandler = async (req, _res, next) => {
+    if (await isLibraryAdmin(req)) return next();
+    next(new AppError(403, 'forbidden', 'Only platform admins of the platform operator can change the reference library.'));
+  };
+  const write = [requirePermission('library.write'), requireOperator];
 
   const versionSummary = async (tx: Tx): Promise<LibraryVersionSummary[]> => {
     const current = await currentVersion(tx);
@@ -105,7 +117,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
 
   router.get('/library/versions', async (req, res) => {
     const versions = await withContext(db, contextOf(req), versionSummary);
-    res.json({ versions });
+    res.json({ versions, canEdit: await isLibraryAdmin(req) });
   });
 
   /** The version a new period pins (M3 calls the same lookup). */
@@ -116,7 +128,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.json({ version: current });
   });
 
-  router.post('/library/versions', write, async (req, res) => {
+  router.post('/library/versions', ...write, async (req, res) => {
     const input = CreateLibraryVersionRequest.parse(req.body);
     const ctx = contextOf(req, 'Create draft version');
     const id = await withContext(db, ctx, async (tx) => {
@@ -136,7 +148,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.status(201).json({ version: versions.find((v) => v.id === id) });
   });
 
-  router.delete('/library/versions/:id', write, async (req, res) => {
+  router.delete('/library/versions/:id', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'library version');
     await withContext(db, contextOf(req, 'Discard draft'), async (tx) => {
       await loadDraft(tx, id);
@@ -155,7 +167,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.json({ diff, fingerprint: diffFingerprint(diff) });
   });
 
-  router.post('/library/versions/:id/publish', write, async (req, res) => {
+  router.post('/library/versions/:id/publish', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'library version');
     const { confirmCode, diffFingerprint: reviewed } = PublishRequest.parse(req.body);
     await withContext(db, contextOf(req, 'Publish version'), async (tx) => {
@@ -227,7 +239,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     return row;
   };
 
-  router.post('/library/versions/:id/factors', write, async (req, res) => {
+  router.post('/library/versions/:id/factors', ...write, async (req, res) => {
     const versionId = idParam(req.params.id, 'library version');
     const input = withSi(FactorInput.parse(req.body));
     const row = await withContext(db, contextOf(req, 'Add factor'), async (tx) => {
@@ -242,7 +254,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.status(201).json({ factor: factorDto(row) });
   });
 
-  router.patch('/library/factors/:id', write, async (req, res) => {
+  router.patch('/library/factors/:id', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'factor');
     const patch = FactorPatch.parse(req.body);
     const row = await withContext(db, contextOf(req, 'Save factor'), async (tx) => {
@@ -262,7 +274,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.json({ factor: factorDto(row) });
   });
 
-  router.delete('/library/factors/:id', write, async (req, res) => {
+  router.delete('/library/factors/:id', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'factor');
     await withContext(db, contextOf(req, 'Delete factor'), async (tx) => {
       const f = await loadFactor(tx, id);
@@ -281,7 +293,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     return row;
   };
 
-  router.patch('/library/goods-categories/:id', write, async (req, res) => {
+  router.patch('/library/goods-categories/:id', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'goods category');
     const patch = GoodsCategoryPatch.parse(req.body);
     await withContext(db, contextOf(req, 'Save goods category'), async (tx) => {
@@ -298,7 +310,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.status(204).end();
   });
 
-  router.put('/library/goods-categories/:id/precursors', write, async (req, res) => {
+  router.put('/library/goods-categories/:id/precursors', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'goods category');
     const { precursors } = RelevantPrecursorsRequest.parse(req.body);
     await withContext(db, contextOf(req, 'Save relevant precursors'), async (tx) => {
@@ -379,7 +391,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     return { inScope, fingerprint };
   };
 
-  router.post('/library/versions/:id/imports', write, express.json({ limit: '10mb' }), async (req, res) => {
+  router.post('/library/versions/:id/imports', ...write, express.json({ limit: '10mb' }), async (req, res) => {
     const versionId = idParam(req.params.id, 'library version');
     const input = ImportRequest.parse(req.body);
     const parsed = parseImport(input.dataset, input.content);
@@ -413,7 +425,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
     res.status(201).json({ preview });
   });
 
-  router.post('/library/imports/:id/apply', write, async (req, res) => {
+  router.post('/library/imports/:id/apply', ...write, async (req, res) => {
     const id = idParam(req.params.id, 'import');
     const ctx = contextOf(req, 'Apply to draft');
     const result = await withContext(db, ctx, async (tx) => {

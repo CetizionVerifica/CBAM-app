@@ -25,10 +25,10 @@ const factor = (over: Record<string, unknown> = {}) => ({
   validFrom: '2026-01-01', validTo: null, source: 'Template 2026-Q2', notes: null, ...over,
 });
 
-function library(role: string, versions: object[], extra: Record<string, unknown> = {}) {
+function library(role: string, versions: object[], extra: Record<string, unknown> = {}, canEdit = role === 'platform_admin') {
   const calls = mockApi({
     'GET /auth/me': me(role),
-    'GET /library/versions': { status: 200, body: { versions } },
+    'GET /library/versions': { status: 200, body: { versions, canEdit } },
     'GET /library/versions/v1/factors': { status: 200, body: { factors: [factor()] } },
     'GET /library/versions/v2/factors': { status: 200, body: { factors: [factor({ id: 'f2', value: '56.4' })] } },
     'GET /reference/countries': { status: 200, body: { countries: [{ code: 'IN', name: 'India' }] } },
@@ -47,6 +47,13 @@ describe('reference library', () => {
     expect(screen.getByText(/Version 2026.1 is published and read-only/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create draft version' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('hides edit actions from a platform admin of another tenant (not the operator)', async () => {
+    library('platform_admin', [draft, published], {}, false);
+    expect(await screen.findByText('Natural gas')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create draft version' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Publish version' })).not.toBeInTheDocument();
   });
 
   it('switches tabs with the arrow keys', async () => {

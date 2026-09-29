@@ -65,7 +65,7 @@ export async function bootstrapTenant(owner: Db) {
   const { rows } = await sql<{ tenant_id: string; user_id: string }>`
     select * from auth.bootstrap_tenant(${`Tenant ${slug}`}, ${slug}, ${email}, 'Ada Admin',
                                         ${sha256Hex(token)}, now() + interval '1 hour')`.execute(owner);
-  return { tenantId: rows[0]!.tenant_id, adminId: rows[0]!.user_id, email, token };
+  return { tenantId: rows[0]!.tenant_id, adminId: rows[0]!.user_id, email, token, slug };
 }
 
 export async function acceptInvitation(t: TestApp, token: string, displayName = 'Test User') {

@@ -321,6 +321,7 @@ export interface Tenant {
   created_at: Generated<Timestamp>;
   created_by: Generated<string>;
   id: Generated<string>;
+  is_platform_operator: Generated<boolean>;
   name: string;
   settings: Generated<Json>;
   slug: string;

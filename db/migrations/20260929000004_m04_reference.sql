@@ -79,6 +79,50 @@ create function app.is_platform_admin() returns boolean
   as $$ select app.current_user_role() = 'platform_admin' $$;
 
 -- ---------------------------------------------------------------------------
+-- Platform operator (review M4 F2, decision D12). Every tenant's first user is a platform
+-- admin, but the library is shared by all tenants, so only the admins of the one operator
+-- tenant may change it. No operator set = nobody can change the library.
+-- ---------------------------------------------------------------------------
+
+alter table tenant add column is_platform_operator boolean not null default false;
+create unique index tenant_one_platform_operator on tenant ((true)) where is_platform_operator;
+
+create function app.is_library_admin() returns boolean
+  language sql stable
+  as $$
+    select app.current_user_role() = 'platform_admin'
+       and coalesce((select t.is_platform_operator from tenant t where t.id = app.current_tenant_id()), false)
+  $$;
+
+-- Sets the operator tenant by slug. Run by the owner (CLI), never by the app role; owned by
+-- cbam_auth (BYPASSRLS) like auth.bootstrap_tenant. The nil user marks a system change.
+create function auth.set_platform_operator(p_slug text) returns uuid
+  language plpgsql security definer
+  set search_path = pg_catalog, public, pg_temp
+  as $$
+declare
+  v_tenant uuid;
+begin
+  select id into v_tenant from tenant where slug = p_slug;
+  if v_tenant is null then
+    raise exception 'No tenant with slug %', p_slug using errcode = 'no_data_found';
+  end if;
+  perform set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true);
+  perform set_config('app.tenant_id', v_tenant::text, true);
+  perform set_config('app.user_role', 'platform_admin', true);
+  perform set_config('app.action', 'Set platform operator', true);
+  update tenant set is_platform_operator = false where is_platform_operator and id <> v_tenant;
+  update tenant set is_platform_operator = true where id = v_tenant and not is_platform_operator;
+  return v_tenant;
+end
+$$;
+revoke execute on function auth.set_platform_operator(text) from public;
+alter function auth.set_platform_operator(text) owner to cbam_auth;
+set local role cbam_auth;
+grant execute on function auth.set_platform_operator(text) to cbam_owner;
+reset role;
+
+-- ---------------------------------------------------------------------------
 -- template_version: official EU template releases the report generator (M12) fills.
 -- Registered once, never changed; results pin the code (G8).
 -- ---------------------------------------------------------------------------
@@ -1250,7 +1294,8 @@ revoke execute on function app.clone_library_content(uuid, uuid) from public;
 grant execute on function app.clone_library_content(uuid, uuid) to cbam_app;
 
 -- ---------------------------------------------------------------------------
--- Policies (G1, G2, D1). Library: everyone reads, only the platform admin writes.
+-- Policies (G1, G2, D1, D12). Library: everyone reads; only the operator tenant's platform
+-- admins write.
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -1259,9 +1304,9 @@ begin
   foreach t in array array['library_version', 'goods_category', 'production_route', 'route_relevant_precursor',
                            'qualifying_parameter_def', 'cn_code', 'library_factor', 'template_version'] loop
     execute format('create policy %I on %I for select to cbam_app using (true)', t || '_read', t);
-    execute format('create policy %I on %I for insert to cbam_app with check (app.is_platform_admin())', t || '_insert', t);
-    execute format('create policy %I on %I for update to cbam_app using (app.is_platform_admin()) with check (app.is_platform_admin())', t || '_update', t);
-    execute format('create policy %I on %I for delete to cbam_app using (app.is_platform_admin())', t || '_delete', t);
+    execute format('create policy %I on %I for insert to cbam_app with check (app.is_library_admin())', t || '_insert', t);
+    execute format('create policy %I on %I for update to cbam_app using (app.is_library_admin()) with check (app.is_library_admin())', t || '_update', t);
+    execute format('create policy %I on %I for delete to cbam_app using (app.is_library_admin())', t || '_delete', t);
   end loop;
 end
 $$;
@@ -1270,7 +1315,7 @@ grant select, insert, update, delete on library_version, goods_category, product
 grant select, insert on template_version to cbam_app;
 
 create policy library_import_admin on library_import for all to cbam_app
-  using (app.is_platform_admin()) with check (app.is_platform_admin());
+  using (app.is_library_admin()) with check (app.is_library_admin());
 grant select, insert, update, delete on library_import to cbam_app;
 
 -- Overrides: readable with the client; consultants and admins propose; the proposer can
@@ -1303,6 +1348,10 @@ drop function app.guard_factor_override();
 drop function app.reject_template_change();
 drop function app.guard_library_content();
 drop function app.guard_library_version();
+drop function auth.set_platform_operator(text);
+drop function app.is_library_admin();
+drop index tenant_one_platform_operator;
+alter table tenant drop column is_platform_operator;
 drop function app.is_platform_admin();
 
 create or replace function audit.log_row_change() returns trigger
