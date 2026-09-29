@@ -1,17 +1,17 @@
 import { Kysely, PostgresDialect, type Transaction, sql } from 'kysely';
 import pg from 'pg';
 import type { UserRole } from '@cbam/shared';
-import type { Database } from '../db-types';
+import type { DB } from '../db-types';
 
 // `date` columns stay 'YYYY-MM-DD' strings: no time-zone shift at period boundaries (M3-R8).
 pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 // `numeric` and `int8` already arrive as strings; they go into Decimal, never Number (G6).
 
-export type Db = Kysely<Database>;
-export type Tx = Transaction<Database>;
+export type Db = Kysely<DB>;
+export type Tx = Transaction<DB>;
 
 export function createDb(connectionString: string): Db {
-  return new Kysely<Database>({
+  return new Kysely<DB>({
     dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString, max: 10 }) }),
   });
 }

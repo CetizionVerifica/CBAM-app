@@ -15,7 +15,9 @@
     "db:migrate": "dbmate --migrations-dir db/migrations --no-dump-schema up",
     "db:rollback": "dbmate --migrations-dir db/migrations --no-dump-schema rollback",
     "db:new": "dbmate --migrations-dir db/migrations new",
-    "db:status": "dbmate --migrations-dir db/migrations status"
+    "db:status": "dbmate --migrations-dir db/migrations status",
+    "db:types": "scripts/db-types.sh",
+    "db:check": "scripts/check-migrations.sh"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

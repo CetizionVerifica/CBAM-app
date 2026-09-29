@@ -1,6 +1,6 @@
 # Module map — M1 to M13
 
-- **Date:** 2026-09-29
+- **Date:** 2026-09-29 (M1 row updated on branch `m01-access`)
 - **Commit:** `c3d703c` (main) plus the untracked file `templates/CBAM_Communication_Template_Installations_2026-Q2.xlsx`
 - **Scope:** Maps the code to modules only. This is not a review, so there are no findings or severities.
 
@@ -26,8 +26,8 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 
 | # | Module | Phase (spec §10) | Status | Files | Routes | Tables |
 |---|---|---|---|---|---|---|
-| M1 | Tenant and access | 1 Foundation | Missing | — | — | — |
-| M2 | Client and installation registry | 1 Foundation | Missing | — | — | — |
+| M1 | Tenant and access | 1 Foundation | **Built** (R2 assignment API → M2); review: Ready | see below | see below | see below |
+| M2 | Client and installation registry | 1 Foundation | **Built** (R3 defaults → M4/M9; R6 period check → M3); review: Ready | see below | see below | see below |
 | M3 | Reporting period manager | 1 Foundation | Missing | — | — | — |
 | M4 | Reference library | 1 Foundation | Missing (template file only) | — | — | — |
 | M5 | Process and goods set-up | 2 Calculation core | Missing | — | — | — |
@@ -39,6 +39,26 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | M11 | Validation and review | 3 Review and outputs | Missing | — | — | — |
 | M12 | Report generator | 3 Review and outputs | Missing (template file only) | — | — | — |
 | M13 | Evidence and audit | 1 Foundation | Missing | — | — | — |
+
+## M1 — as built
+
+| Kind | Items |
+|---|---|
+| Files | `apps/api/src/modules/m01-access/` (`auth.router.ts`, `users.router.ts`, `passwords.ts`), `apps/api/src/platform/{auth,crypto,totp,mailer}.ts`, `apps/api/src/cli/bootstrap-admin.ts`, `packages/shared/src/access.ts`, `apps/web/src/features/access/`, `apps/web/src/features/settings/UsersPage.tsx`, `apps/web/src/app/{RequireSession,UserMenu}.tsx` |
+| Routes | `POST /api/v1/auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/session`, `POST /auth/mfa/{setup,enable,verify}`, `GET /auth/invitations/:token`, `POST /auth/invitations/accept`; `GET /api/v1/users`, `GET /users/:id`, `POST /users/invitations`, `POST /users/:id/invitations`, `PATCH /users/:id`, `POST /users/:id/{deactivate,reactivate}` |
+| Tables | `tenant`, `app_user`, `invitation`, `user_client_assignment`, `user_installation_assignment`; `auth.login_state`, `auth.session`, `auth.mfa_recovery_code`, `auth.auth_event` (migration `20260929000002_m01_access.sql`) |
+| Screens | Sign-in, 2FA challenge, 2FA set-up, accept invitation, Users |
+| Review | `docs/reviews/M01.md` |
+
+## M2 — as built
+
+| Kind | Items |
+|---|---|
+| Files | `apps/api/src/modules/m02-registry/` (`registry.router.ts`, `fields.ts`), `apps/api/src/platform/db-errors.ts`, `packages/shared/src/registry.ts`, `apps/web/src/features/registry/`, `apps/web/src/components/{RecordForm,ConfirmDialog}.tsx`, `docs/mappings/template-A_InstData.md` |
+| Routes | `GET/POST /api/v1/clients`, `GET/PATCH/DELETE /clients/:id`, `POST /clients/:id/installations`, `GET/PATCH/DELETE /installations/:id`, `POST /clients/:id/importers`, `PATCH/DELETE /importers/:id`, `GET /clients/:id/team`, `PUT/DELETE /clients/:id/team/:userId`, `PUT/DELETE /installations/:id/team/:userId`, `GET /reference/countries` |
+| Tables | `client`, `installation`, `eu_importer`, `ref_country` (M4 owns updates); FKs and policies on the M1 assignment tables (migration `20260929000003_m02_registry.sql`) |
+| Screens | Portfolio, Add client, Client profile (importers, team), Add installation, Installation profile |
+| Review | `docs/reviews/M02.md` |
 
 ## Expected locations (planned, not found)
 
