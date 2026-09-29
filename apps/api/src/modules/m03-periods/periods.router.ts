@@ -253,7 +253,7 @@ export function periodsRouter({ db, hooks = emptyPeriodHooks() }: { db: Db; hook
   router.patch('/periods/:id', manage, async (req, res) => {
     const id = idParam(req.params.id, 'reporting period');
     const input = PeriodInput.parse(req.body);
-    const period = await withContext(db, contextOf(req, 'Edit period dates'), async (tx) => {
+    const period = await withContext(db, contextOf(req, 'Save period dates'), async (tx) => {
       await loadPeriod(tx, id, true);
       const current = await periodDetail(tx, id);
       if (!current.datesEditable) {
