@@ -1,6 +1,6 @@
 # Module map — M1 to M13
 
-- **Date:** 2026-09-29
+- **Date:** 2026-09-29 (M1 row updated on branch `m01-access`)
 - **Commit:** `c3d703c` (main) plus the untracked file `templates/CBAM_Communication_Template_Installations_2026-Q2.xlsx`
 - **Scope:** Maps the code to modules only. This is not a review, so there are no findings or severities.
 
@@ -26,7 +26,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 
 | # | Module | Phase (spec §10) | Status | Files | Routes | Tables |
 |---|---|---|---|---|---|---|
-| M1 | Tenant and access | 1 Foundation | Missing | — | — | — |
+| M1 | Tenant and access | 1 Foundation | **Built** (R2 assignment API → M2); review: Ready | see below | see below | see below |
 | M2 | Client and installation registry | 1 Foundation | Missing | — | — | — |
 | M3 | Reporting period manager | 1 Foundation | Missing | — | — | — |
 | M4 | Reference library | 1 Foundation | Missing (template file only) | — | — | — |
@@ -39,6 +39,16 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | M11 | Validation and review | 3 Review and outputs | Missing | — | — | — |
 | M12 | Report generator | 3 Review and outputs | Missing (template file only) | — | — | — |
 | M13 | Evidence and audit | 1 Foundation | Missing | — | — | — |
+
+## M1 — as built
+
+| Kind | Items |
+|---|---|
+| Files | `apps/api/src/modules/m01-access/` (`auth.router.ts`, `users.router.ts`, `passwords.ts`), `apps/api/src/platform/{auth,crypto,totp,mailer}.ts`, `apps/api/src/cli/bootstrap-admin.ts`, `packages/shared/src/access.ts`, `apps/web/src/features/access/`, `apps/web/src/features/settings/UsersPage.tsx`, `apps/web/src/app/{RequireSession,UserMenu}.tsx` |
+| Routes | `POST /api/v1/auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/session`, `POST /auth/mfa/{setup,enable,verify}`, `GET /auth/invitations/:token`, `POST /auth/invitations/accept`; `GET /api/v1/users`, `GET /users/:id`, `POST /users/invitations`, `POST /users/:id/invitations`, `PATCH /users/:id`, `POST /users/:id/{deactivate,reactivate}` |
+| Tables | `tenant`, `app_user`, `invitation`, `user_client_assignment`, `user_installation_assignment`; `auth.login_state`, `auth.session`, `auth.mfa_recovery_code`, `auth.auth_event` (migration `20260929000002_m01_access.sql`) |
+| Screens | Sign-in, 2FA challenge, 2FA set-up, accept invitation, Users |
+| Review | `docs/reviews/M01.md` |
 
 ## Expected locations (planned, not found)
 

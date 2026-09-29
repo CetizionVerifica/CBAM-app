@@ -14,7 +14,7 @@ const tenantB = randomUUID();
 const ctx = (tenantId: string, extra: Partial<RequestContext> = {}): RequestContext => ({
   tenantId,
   userId: randomUUID(),
-  userRole: 'consultant',
+  userRole: 'platform_admin', // since M1 only admins read the audit log
   requestId: randomUUID(),
   ...extra,
 });
@@ -66,7 +66,7 @@ describe('audit trigger (G3)', () => {
       op: 'INSERT',
       table_name: 'public.test_widget',
       actor_user_id: c.userId,
-      actor_role: 'consultant',
+      actor_role: 'platform_admin',
       action: 'Add widget',
       request_id: c.requestId,
       tenant_id: tenantA,

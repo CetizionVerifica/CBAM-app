@@ -1,19 +1,23 @@
-import { BookOpen, Briefcase, FileSearch, History, type LucideIcon, Settings } from 'lucide-react';
+import { type Permission, type UserRole, can } from '@cbam/shared';
+import { Briefcase, type LucideIcon, Users } from 'lucide-react';
 
 export interface NavItem {
   label: string;
   to: string;
   icon: LucideIcon;
+  /** Hidden when the role lacks this permission. Display only — the API enforces access. */
+  permission?: Permission;
 }
 
 /**
- * Side navigation (design system 4). The "This period" workflow steps are added with
- * M3 and later modules; only built screens are listed so there are no dead links.
+ * Side navigation (design system 4). The "This period" workflow steps arrive with M3 and
+ * later modules; only built screens are listed so there are no dead links.
  */
 export const NAV_GROUPS: NavItem[][] = [
   [{ label: 'Portfolio', to: '/', icon: Briefcase }],
-  // Evidence, Audit trail (M13); Library (M4); Settings (M1) — enabled as each module lands.
+  // Evidence, Audit trail (M13); Library (M4) — added as each module lands.
+  [{ label: 'Users', to: '/settings/users', icon: Users, permission: 'users.list' }],
 ];
 
-// Referenced here so the icon choice from design system 3.7 is recorded with the nav.
-export const PLANNED_ICONS = { evidence: FileSearch, audit: History, library: BookOpen, settings: Settings };
+export const navFor = (role: UserRole): NavItem[][] =>
+  NAV_GROUPS.map((g) => g.filter((i) => !i.permission || can(role, i.permission))).filter((g) => g.length > 0);

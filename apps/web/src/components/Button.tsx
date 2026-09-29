@@ -12,6 +12,8 @@ const button = cva(
         secondary: 'border border-rule-strong bg-surface text-ink hover:bg-surface-sunken',
         quiet: 'px-2 text-action hover:bg-action-tint',
         destructive: 'px-2 text-critical hover:bg-critical-tint',
+        /** Only inside a confirmation dialog (design system 5.1). */
+        confirmDestructive: 'bg-critical text-surface hover:opacity-90',
       },
     },
     defaultVariants: { variant: 'secondary' },
