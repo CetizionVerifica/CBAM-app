@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { RecordForm, toFormValues } from '@/components/RecordForm';
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/States';
 import { useToast } from '@/components/Toast';
+import { OverridesPanel } from '@/features/library/OverridesPanel';
 import { api } from '@/lib/api';
 import { useCountryName } from '@/lib/reference';
 import { useMe } from '@/lib/session';
@@ -101,6 +102,7 @@ export function ClientPage() {
 
         <ImportersPanel clientId={clientId} importers={importers} canWrite={canWrite} />
         <TeamPanel clientId={clientId} installations={installations} canManage={can(me.user.role, 'assignments.manage')} currentUserId={me.user.id} />
+        <OverridesPanel clientId={clientId} />
       </div>
 
       {deleting && (

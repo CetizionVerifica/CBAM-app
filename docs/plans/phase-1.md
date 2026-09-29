@@ -15,6 +15,11 @@ These are recorded here because they refine the spec. Spec sections 3, 4.1 and 4
 | D4 | **Consultants, reviewers and recipients see only the clients assigned to them.** Contributors see only assigned installations. The platform admin sees every client in the tenant. |
 | D5 | **One role per user.** |
 | D6 | **Partial requirements.** M3-R6 (clone) copies only the period metadata until M5 exists. M3-R7 (approval gate) is an `ApprovalGuard` extension point with no rules until M11. Both will show as partial in the M3 review. |
+| D7 | **One factor table (M4).** Emission factors, NCVs, GWPs, grid factors and default SEE values share `library_factor` with a `kind` column; the natural key is kind + subject + country + region + year + component, one row per key per version. Versioning, diff, import and overrides work the same way for every kind. This replaces the separate `emission_factor`, `ncv`, `gwp`, `grid_factor` and `default_see` tables listed below. |
+| D8 | **Library versions (M4).** At most one draft at a time; it starts as a copy of the current published version. Publishing freezes the version (triggers refuse any change, SQLSTATE 55000). "Current" = the most recently published version; M3 pins its id when a period opens. |
+| D9 | **Seed data (M4).** Version 2026.1 is seeded only with what the official template 2026-Q2 prints: 18 goods categories with indirect-emission flags, routes, relevant precursors, qualifying parameters, 569 CN codes, the three GWPs and the natural gas EF (56.1 tCO₂/TJ). NCVs, grid factors and default values are imported (spec §11: licensing still open). Validity dates of the seeded factors are set to 2026-01-01. |
+| D10 | **Imports are CSV (M4-R4).** The Commission's default-value file is not in the repo, so imports use the documented CSV layouts in `docs/mappings/library-import.md`. A factors file replaces every factor of the kinds it contains; a CN-code file replaces the whole list. An xlsx reader for the official file can map onto the same layout later. |
+| D11 | **Overrides need approval (M4-R5).** Consultants and admins propose client-specific overrides; only the platform admin approves or rejects. Values never change after the proposal (withdraw and propose again). The engine (M10) will use only approved overrides and mark the value as an override in the trace. |
 
 ## Stack choices
 - pnpm workspaces, Node ≥ 22, TypeScript strict, Vitest.
@@ -43,7 +48,7 @@ These are recorded here because they refine the spec. Spec sections 3, 4.1 and 4
 - **M1:** `tenant`, `app_user`, `user_client_assignment`, `user_installation_assignment`, `invitation`, `session`, `mfa_recovery_code`, `auth_event`.
 - **M2:** `client`, `installation`, `eu_importer`.
 - **M3:** `reporting_period` (an EXCLUDE constraint blocks overlaps), `period_version`, `period_status_change`.
-- **M4:** `library_version`, `ref_country`, `goods_category`, `production_route`, `route_relevant_precursor`, `qualifying_parameter_def`, `cn_code`, `emission_factor`, `ncv`, `gwp`, `grid_factor`, `default_see`, `template_version`, `library_import`, `client_factor_override`.
+- **M4:** `library_version`, `ref_country`, `goods_category`, `production_route`, `route_relevant_precursor`, `qualifying_parameter_def`, `cn_code`, `library_factor` (D7), `template_version`, `library_import`, `client_factor_override`.
 - **M13:** `evidence_document`, `evidence_link`, `verification`, `audit.audit_log`.
 
 ## Build order

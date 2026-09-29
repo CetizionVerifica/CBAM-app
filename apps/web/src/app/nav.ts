@@ -1,5 +1,5 @@
 import { type Permission, type UserRole, can } from '@cbam/shared';
-import { Briefcase, type LucideIcon, Users } from 'lucide-react';
+import { BookOpen, Briefcase, type LucideIcon, Users } from 'lucide-react';
 
 export interface NavItem {
   label: string;
@@ -15,8 +15,12 @@ export interface NavItem {
  */
 export const NAV_GROUPS: NavItem[][] = [
   [{ label: 'Portfolio', to: '/', icon: Briefcase }],
-  // Evidence, Audit trail (M13); Library (M4) — added as each module lands.
-  [{ label: 'Users', to: '/settings/users', icon: Users, permission: 'users.list' }],
+  // Evidence, Audit trail (M13) — added as the module lands.
+  [
+    // M4: every role reads the library (decision D1); only the admin sees edit actions.
+    { label: 'Library', to: '/library', icon: BookOpen },
+    { label: 'Users', to: '/settings/users', icon: Users, permission: 'users.list' },
+  ],
 ];
 
 export const navFor = (role: UserRole): NavItem[][] =>

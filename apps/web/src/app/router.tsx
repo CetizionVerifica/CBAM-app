@@ -7,6 +7,7 @@ import { PortfolioPage } from '@/features/portfolio/PortfolioPage';
 import { ClientPage } from '@/features/registry/ClientPage';
 import { InstallationPage, NewInstallationPage } from '@/features/registry/InstallationPages';
 import { NewClientPage } from '@/features/registry/NewClientPage';
+import { LibraryPage } from '@/features/library/LibraryPage';
 import { UsersPage } from '@/features/settings/UsersPage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
           { path: '/clients/:clientId', element: <ClientPage /> },
           { path: '/clients/:clientId/installations/new', element: <NewInstallationPage /> },
           { path: '/installations/:installationId', element: <InstallationPage /> },
+          { path: '/library', element: <LibraryPage /> },
           { path: '/settings/users', element: <UsersPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
