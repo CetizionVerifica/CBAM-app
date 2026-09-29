@@ -146,7 +146,7 @@ export function usersRouter({ db, mailer, config }: AccessDeps): Router {
     if (id === req.auth!.user.id && body.role !== undefined && body.role !== req.auth!.user.role) {
       throw new AppError(409, 'own_role', 'You cannot change your own role. Ask another platform admin.');
     }
-    const action = body.role !== undefined ? 'Change user role' : 'Rename user';
+    const action = body.role !== undefined ? 'Change role' : 'Rename user';
     const user = await withContext(db, contextOf(req, action), async (tx) => {
       await loadUser(tx, id);
       return tx

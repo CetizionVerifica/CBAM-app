@@ -271,7 +271,7 @@ describe('M1-R8 role changes are audited', () => {
     const res = await admin.a.patch(`/api/v1/users/${u.id}`, { role: 'reviewer' });
     expect(res.body.user.role).toBe('reviewer');
     const last = (await auditFor(u.id)).at(-1)!;
-    expect(last).toMatchObject({ action: 'Change user role', actor_user_id: admin.adminId, changed_fields: ['role'] });
+    expect(last).toMatchObject({ action: 'Change role', actor_user_id: admin.adminId, changed_fields: ['role'] });
     expect(last.old_row).toMatchObject({ role: 'contributor' });
     expect(last.new_row).toMatchObject({ role: 'reviewer' });
   });
