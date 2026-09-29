@@ -1,6 +1,7 @@
 # CBAM Reporting Web Application — Modular Build Plan
 
 Exported 29 Sep 2026 from the living plan document. Update this file when the plan changes.
+Updated 29 Sep 2026 with Phase 1 decisions D2 and D3 (`docs/plans/phase-1.md`) after checking template 2026-Q2 sheet A.
 
 ## 1. Purpose and scope
 
@@ -53,8 +54,9 @@ flowchart TD
 | User | Name, email, role, assigned clients and installations | Tenant, audit log |
 | Client | Operator company: legal name, registration no., address, contact | Installations, EU importers |
 | EU importer (customer) | Importer or indirect customs representative receiving the data, EORI | Client, reports |
-| Installation | Site name, address, country, UN/LOCODE, coordinates, permit, monitoring plan | Client, reporting periods |
-| Reporting period | Start and end date, status, data version, lock flag | Installation, processes, reports |
+| Installation | Site name (local and English), address, country, UN/LOCODE, coordinates, permit, monitoring plan | Client, reporting periods |
+| Reporting period | Start and end date, justification for a non-calendar year | Installation, period versions |
+| Period version | Version number, status, lock, pinned factor-library and template versions | Reporting period, processes, reports |
 | Production process | Aggregated goods category, production route, activity level | Period, source streams, energy, precursors, goods |
 | Good | CN code (8-digit), quantity, qualifying parameters | Process, report |
 | Source stream | Fuel or material with activity data and factors (calculation method) | Process, emission factor library |
@@ -77,25 +79,26 @@ About 70 parameters in ten groups feed the SEE calculation and the template; gro
 
 | Parameter | Unit / format | Notes |
 | --- | --- | --- |
-| Operator legal name, address, country | Text | Maps to template sheet A (installation data) |
+| Operator legal name, address, country | Text | Not in the template; used in the PDF report and importer summary |
 | Operator contact person, email, phone | Text | |
-| Installation name and address | Text | One client can have many |
+| Installation name (local, optional) and English name | Text | Template sheet A; one client can have many |
+| Installation address: street and number, P.O. box, post code, city | Text | Template sheet A |
 | Country of installation | ISO 3166 code | Drives grid factor and carbon price rules |
 | UN/LOCODE | Code | Template field |
-| Latitude, longitude | Decimal degrees | |
+| Latitude, longitude | Decimal degrees | Coordinates of the main emission source (template sheet A) |
 | Installation ID / permit number | Text | Local registry ID if one exists |
 | Main economic activity | Text / code | |
-| Authorised representative | Text | Optional |
-| EU importer(s) served, EORI | Text | Who receives the data |
+| Authorised representative: name, email, telephone | Text | Template sheet A |
+| EU importer(s) served, EORI | Text | Who receives the data; not in the template |
 
 ### 4.2 Reporting period
 
 | Parameter | Unit / format | Notes |
 | --- | --- | --- |
 | Period start and end | Date | Calendar year by default; other 12-month periods allowed with justification |
-| Period status | Draft / In review / Approved / Issued | Locks data on approval |
+| Period status | Draft / In review / Approved / Issued | Held per data version; locks data on approval |
 | Monitoring methodology | Calculation / measurement / mass balance | Per source stream or source |
-| Data version | Integer | New version on any change after issue |
+| Data version | Integer | New version on any change after issue; each version pins its factor-library and template version |
 
 ### 4.3 Production processes and goods
 
@@ -185,7 +188,7 @@ About 70 parameters in ten groups feed the SEE calculation and the template; gro
 | Parameter | Unit | Notes |
 | --- | --- | --- |
 | Supporting documents | File + type + link to record | Invoices, meter readings, lab reports |
-| Verifier name and accreditation | Text | |
+| Verifier name, address, contact and accreditation | Text | Template sheet A section 3: accreditation member state, body, registration number |
 | Site visit date | Date | |
 | Verification opinion and findings | Text, list | |
 | Approval by consultant and client | User + timestamp | |

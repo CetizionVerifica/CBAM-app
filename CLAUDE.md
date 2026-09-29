@@ -61,8 +61,13 @@ docs/                Spec, design system, reviews
 - Spec and review report updated in `docs/`.
 
 ## Commands
-Fill these in once the project is scaffolded:
-- Install: `…`
-- Dev (web + api): `…`
-- Test: `…`
-- Migrate DB: `…`
+- Install: `pnpm install` (Node ≥ 22, pnpm 11)
+- Local services (Postgres 17, MinIO, Mailpit): `cp .env.example .env`, fill it in, then `pnpm services:up`
+- Migrate DB: `pnpm db:migrate` (runs as `cbam_owner`; new migration: `pnpm db:new <name>`)
+- Dev (web + api): `pnpm dev` (web on :5173, proxies `/api` to the API on :4000)
+- Test: `pnpm test` (API tests start their own Postgres via Testcontainers; Docker must be running)
+- Typecheck: `pnpm typecheck`
+
+## Database conventions
+- Every business table: `id uuid`, `created_at/by`, `updated_at/by`, then `select app.register_business_table('<table>', '{<secret cols>}')` in the same migration (audit trigger, row metadata, forced RLS), plus its own RLS policies and grants to `cbam_app`.
+- The API reads and writes only inside `withContext(db, ctx, fn)` (`apps/api/src/platform/db.ts`); writes without a context fail in the database.
