@@ -1,0 +1,100 @@
+/*
+ * Design tokens — docs/cbam-ui-design-system.md section 3.
+ * Components use these through Tailwind (index.css); never raw hex values.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 3.1 Base */
+  --canvas: #f3f6f7;
+  --surface: #ffffff;
+  --surface-sunken: #eaeff1;
+  --ink: #16232b;
+  --ink-muted: #56666f;
+  --rule: #d5dde1;
+  --rule-strong: #9faeb6;
+  --action: #1c5d8c;
+  --action-hover: #154a71;
+  --action-tint: #e3eef6;
+
+  /* 3.2 Emission types — markers, charts, the emissions trail */
+  --em-direct: #34408f;
+  --em-indirect: #1d8a8a;
+  --em-precursor: #a0741b;
+  --em-heat: #7a4e9c;
+
+  /* 3.2 Status. Text on a tint always uses --ink. */
+  --ok: #2e7d4f;
+  --warn: #b26b00;
+  --critical: #b42318;
+  --info: var(--action);
+  --locked: #56666f;
+  --ok-tint: color-mix(in srgb, var(--ok) 10%, var(--surface));
+  --warn-tint: #fbf1e0;
+  --critical-tint: color-mix(in srgb, var(--critical) 10%, var(--surface));
+  --info-tint: var(--action-tint);
+  --locked-tint: color-mix(in srgb, var(--locked) 10%, var(--surface));
+
+  /* 3.2 Sectors — small swatches only */
+  --sector-iron-steel: #4b5c6b;
+  --sector-aluminium: #8395a3;
+  --sector-cement: #9a8b78;
+  --sector-fertilisers: #5e8c3a;
+  --sector-hydrogen: #3a7ca5;
+  --sector-electricity: #c69b1e;
+
+  /* 3.5 Shape and elevation */
+  --corner-input: 4px;
+  --corner-button: 6px;
+  --corner-panel: 8px;
+  --elevation-float: 0 8px 24px rgb(22 35 43 / 0.14);
+
+  /* 3.6 Motion */
+  --duration-press: 120ms;
+  --duration-drawer: 200ms;
+  --duration-trail: 320ms;
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --ease-leave: cubic-bezier(0.4, 0, 1, 1);
+
+  /* 3.5 Layout */
+  --nav-width: 240px;
+  --nav-width-collapsed: 64px;
+  --drawer-width: 360px;
+  --trace-drawer-width: 480px;
+  --form-max-width: 880px;
+}
+
+/*
+ * 3.3 Dark mode. Base values from the design system; meaning colours are one step
+ * lighter and were checked at >= 4.5:1 against --surface, --surface-sunken and --canvas.
+ * data-theme is always set before first paint (index.html), from the user's choice
+ * or prefers-color-scheme, so this block is the only copy of the dark values.
+ */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #0f171c;
+  --surface: #16212a;
+  --surface-sunken: #1c2a34;
+  --ink: #e6edf1;
+  --ink-muted: #9aaab4;
+  --rule: #2a3a45;
+  --rule-strong: #5b6e7a;
+  --action: #6fa8d6;
+  --action-hover: #8dbbe0;
+  --action-tint: #1d3447;
+  --em-direct: #8f9bea;
+  --em-indirect: #4cc2c2;
+  --em-precursor: #d8a949;
+  --em-heat: #b690d8;
+  --ok: #5dc08a;
+  --warn: #e5a445;
+  --critical: #f47c70;
+  --locked: #9aaab4;
+  --ok-tint: color-mix(in srgb, var(--ok) 18%, var(--surface));
+  --warn-tint: color-mix(in srgb, var(--warn) 18%, var(--surface));
+  --critical-tint: color-mix(in srgb, var(--critical) 18%, var(--surface));
+  --locked-tint: color-mix(in srgb, var(--locked) 18%, var(--surface));
+  --elevation-float: 0 8px 24px rgb(0 0 0 / 0.45);
+}

@@ -1,0 +1,26 @@
+{
+  "name": "cbam-app",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @cbam/api --filter @cbam/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "services:up": "docker compose up -d",
+    "services:down": "docker compose down",
+    "db:migrate": "dbmate --migrations-dir db/migrations --no-dump-schema up",
+    "db:rollback": "dbmate --migrations-dir db/migrations --no-dump-schema rollback",
+    "db:new": "dbmate --migrations-dir db/migrations new",
+    "db:status": "dbmate --migrations-dir db/migrations status"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "dbmate": "^2.36.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

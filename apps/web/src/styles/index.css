@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans-condensed/400.css';
+@import '@fontsource/ibm-plex-sans-condensed/600.css';
+@import './tokens.css';
+
+/* Tailwind reads the tokens; no hex values below this line. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-tint: var(--action-tint);
+  --color-em-direct: var(--em-direct);
+  --color-em-indirect: var(--em-indirect);
+  --color-em-precursor: var(--em-precursor);
+  --color-em-heat: var(--em-heat);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-critical: var(--critical);
+  --color-critical-tint: var(--critical-tint);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+  --color-locked: var(--locked);
+  --color-locked-tint: var(--locked-tint);
+
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-condensed: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+
+  /* 3.4 Type scale: size / line height */
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+  --text-h1: 22px;
+  --text-h1--line-height: 30px;
+  --text-h2: 18px;
+  --text-h2--line-height: 26px;
+  --text-h3: 15px;
+  --text-h3--line-height: 22px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-small: 13px;
+  --text-small--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-key: 32px;
+  --text-key--line-height: 40px;
+
+  --radius-input: var(--corner-input);
+  --radius-button: var(--corner-button);
+  --radius-panel: var(--corner-panel);
+  --shadow-float: var(--elevation-float);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 22px;
+    font-variant-numeric: tabular-nums;
+    background: var(--canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 10: visible focus ring on every interactive element */
+  :focus-visible {
+    outline: 2px solid var(--action);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+    }
+  }
+}

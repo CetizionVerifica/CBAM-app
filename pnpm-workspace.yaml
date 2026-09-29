@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependency build scripts (pnpm 11 requires an explicit decision per package).
+allowBuilds:
+  esbuild: true
+  # Optional native addons pulled in by testcontainers; pure-JS fallbacks are used.
+  cpu-features: false
+  ssh2: false
+  protobufjs: false
