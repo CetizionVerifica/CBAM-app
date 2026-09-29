@@ -232,11 +232,24 @@ export function registryRouter({ db }: { db: Db }): Router {
     res.json({ installation: installationDto(installation) });
   });
 
-  // M2-R6: soft delete. M3 adds the reporting-period check (AT3) here.
+  // M2-R6, AT3: soft delete, and never for an installation with reporting periods (the
+  // database refuses too).
   router.delete('/installations/:id', requirePermission('registry.write'), async (req, res) => {
     const id = idParam(req.params.id, 'installation');
     await withContext(db, contextOf(req, 'Delete installation'), async (tx) => {
       await loadInstallation(tx, id);
+      const periods = await tx
+        .selectFrom('reporting_period')
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('installation_id', '=', id)
+        .executeTakeFirstOrThrow();
+      if (Number(periods.n) > 0) {
+        throw new AppError(
+          409,
+          'has_periods',
+          `This installation has ${periods.n} reporting period(s), so it can't be deleted. Its data must stay available for verification.`,
+        );
+      }
       await tx.updateTable('installation').set({ deleted_at: sql`now()` }).where('id', '=', id).execute();
       await tx.deleteFrom('user_installation_assignment').where('installation_id', '=', id).execute();
     });
