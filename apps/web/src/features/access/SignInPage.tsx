@@ -18,7 +18,10 @@ export function SignInPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const setMe = useSetMe();
-  const [formError, setFormError] = useState<string | null>(null);
+  // Why the user was sent here (review M1 F9); the API gave the same words.
+  const [formError, setFormError] = useState<string | null>(
+    params.get('reason') === 'locked' ? 'Too many failed attempts. Try again in 15 minutes.' : null,
+  );
   const form = useForm<Values>({
     resolver: zodResolver(LoginRequest),
     mode: 'onBlur',

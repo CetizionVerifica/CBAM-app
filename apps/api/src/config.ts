@@ -6,6 +6,17 @@ const Env = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   APP_DATABASE_URL: z.url(),
   WEB_ORIGIN: z.url(),
+  /**
+   * Express 'trust proxy': hop count (e.g. 1 behind one load balancer) or a comma-separated
+   * list of proxy addresses/subnets. Off by default so clients cannot choose their own IP
+   * through X-Forwarded-For (review M1 F4).
+   */
+  TRUST_PROXY: z
+    .string()
+    .default('false')
+    .transform((v): boolean | number | string[] =>
+      v === 'false' ? false : /^\d+$/.test(v) ? Number(v) : v.split(',').map((s) => s.trim()),
+    ),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /** 32 random bytes, base64. Encrypts TOTP secrets at rest. */
   TOTP_ENCRYPTION_KEY: z

@@ -20,6 +20,7 @@ export function testConfig(): Config {
     PORT: 0,
     APP_DATABASE_URL: inject('appUrl'),
     WEB_ORIGIN,
+    TRUST_PROXY: false,
     LOG_LEVEL: 'silent',
     TOTP_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     SMTP_URL: 'smtp://localhost:1025',
@@ -89,6 +90,12 @@ export async function signInWithMfa(t: TestApp, email: string) {
   expect(enable.status, JSON.stringify(enable.body)).toBe(200);
   return { a, secret, recoveryCodes: enable.body.recoveryCodes as string[] };
 }
+
+/**
+ * A valid code for the next time step. The current step was used at enrolment, and a
+ * step is accepted only once (replay protection), so the next sign-in uses step + 1.
+ */
+export const nextCode = (secret: string) => totpAt(secret, Date.now() + 30_000);
 
 /** Last invitation token sent to an address (from the in-memory mailer). */
 export function tokenFromMail(t: TestApp, email: string): string {

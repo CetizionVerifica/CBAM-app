@@ -17,7 +17,7 @@ import {
   generateTotpSecret,
   normaliseRecoveryCode,
   otpauthUrl,
-  verifyTotp,
+  matchTotpStep,
 } from '../../platform/totp';
 import { type AccessDeps, LOCKOUT_MINUTES, MAX_FAILED_LOGINS } from './deps';
 import { dummyVerify, hashPassword, verifyPassword } from './passwords';
@@ -92,9 +92,11 @@ export function authRouter({ db, config }: AccessDeps): Router {
       throw BAD_CREDENTIALS;
     }
 
+    // Failures are cleared only once sign-in is complete; with 2FA that is after the code (F1).
+    const mfa = mfaState(u.role, u.totp_enabled, false);
     const token = randomToken();
     await sql`select auth.create_session(${u.user_id}, ${sha256Hex(token)}, ${config.SESSION_TTL_MINUTES},
-                                         ${client(req).ip}, ${client(req).ua})`.execute(db);
+                                         ${client(req).ip}, ${client(req).ua}, ${mfa === 'not_required'})`.execute(db);
     await logEvent(req, u.tenant_id, u.user_id, email, 'login_succeeded');
     setSessionCookie(res, token);
 
@@ -102,7 +104,7 @@ export function authRouter({ db, config }: AccessDeps): Router {
       select * from auth.session_lookup(${sha256Hex(token)}, ${config.SESSION_IDLE_MINUTES})`.execute(db);
     res.json({
       user: { id: u.user_id, tenantId: u.tenant_id, email: users[0]!.email, displayName: users[0]!.display_name, role: u.role },
-      mfa: mfaState(u.role, u.totp_enabled, false),
+      mfa,
     } satisfies MeResponse);
   });
 
@@ -137,13 +139,14 @@ export function authRouter({ db, config }: AccessDeps): Router {
     const { code } = MfaEnableRequest.parse(req.body);
     const sealed = await totpSecret(req.auth!.sessionHash);
     if (!sealed) throw new AppError(409, 'mfa_not_started', 'Start two-factor set-up first.');
-    if (!verifyTotp(decryptSecret(sealed, key), code)) {
+    const step = matchTotpStep(decryptSecret(sealed, key), code);
+    if (step === null) {
       throw new AppError(400, 'bad_code', 'That code is not correct. Check the time on your phone and try again.');
     }
     const codes = generateRecoveryCodes();
     try {
       await sql`select auth.enable_totp(${req.auth!.sessionHash},
-                  ${codes.map((c) => sha256Hex(normaliseRecoveryCode(c)))}::text[])`.execute(db);
+                  ${codes.map((c) => sha256Hex(normaliseRecoveryCode(c)))}::text[], ${step})`.execute(db);
     } catch (e) {
       if ((e as { code?: string }).code === '23514') {
         throw new AppError(409, 'mfa_already_enabled', 'Two-factor authentication is already on for this account.');
@@ -156,15 +159,25 @@ export function authRouter({ db, config }: AccessDeps): Router {
 
   router.post('/mfa/verify', requireSession, limiter, async (req, res) => {
     const body = MfaVerifyRequest.parse(req.body);
-    const { user, sessionHash, mfa } = req.auth!;
+    const { user, sessionHash, mfa, locked } = req.auth!;
     if (mfa === 'verified') return void res.json(me(req));
     if (mfa !== 'required') throw new AppError(409, 'mfa_not_enabled', 'Set up two-factor authentication first.');
+    // A locked account stops every session that has not passed 2FA (F2).
+    if (locked) {
+      await sql`select auth.revoke_session(${sessionHash})`.execute(db);
+      res.clearCookie(SESSION_COOKIE, { path: '/' });
+      throw new AppError(429, 'account_locked', `Too many failed attempts. Try again in ${LOCKOUT_MINUTES} minutes.`);
+    }
 
     let ok: boolean;
     if ('code' in body) {
       const sealed = await totpSecret(sessionHash);
-      ok = !!sealed && verifyTotp(decryptSecret(sealed, key), body.code);
-      if (ok) await sql`select auth.mark_session_mfa_verified(${sessionHash})`.execute(db);
+      const step = sealed ? matchTotpStep(decryptSecret(sealed, key), body.code) : null;
+      // The database also refuses a step already used (replay, F7) or a lock that raced in.
+      ok =
+        step !== null &&
+        (await sql<{ ok: boolean }>`select auth.mark_session_mfa_verified(${sessionHash}, ${step}) as ok`.execute(db))
+          .rows[0]?.ok === true;
     } else {
       const { rows } = await sql<{ ok: boolean }>`
         select auth.use_recovery_code(${sessionHash}, ${sha256Hex(normaliseRecoveryCode(body.recoveryCode))}) as ok`.execute(db);

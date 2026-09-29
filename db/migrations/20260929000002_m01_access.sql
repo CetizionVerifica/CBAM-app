@@ -156,9 +156,20 @@ create policy invitation_access on invitation for all to cbam_app
     and (app.current_user_role() = 'platform_admin'
          or (app.current_user_role() = 'consultant' and created_by = app.current_user_id()))
   )
+  -- The target user must be one the caller may manage (review M1 F3): an admin manages
+  -- anyone in the tenant; a consultant only client-side users they invited. The subquery
+  -- runs under app_user's own RLS, so invisible users never match.
   with check (
     tenant_id = app.current_tenant_id()
-    and app.current_user_role() in ('platform_admin', 'consultant')
+    and exists (
+      select 1 from app_user u
+       where u.id = invitation.user_id
+         and u.tenant_id = invitation.tenant_id
+         and (app.current_user_role() = 'platform_admin'
+              or (app.current_user_role() = 'consultant'
+                  and u.created_by = app.current_user_id()
+                  and app.consultant_can_manage_role(u.role)))
+    )
   );
 grant select, insert, update on invitation to cbam_app;
 
@@ -220,7 +231,9 @@ create table auth.login_state (
   user_id       uuid primary key references app_user (id),
   failed_count  int not null default 0 check (failed_count >= 0),
   locked_until  timestamptz,
-  last_login_at timestamptz
+  last_login_at timestamptz,
+  -- Last accepted TOTP time step; a code at or before it is a replay (review M1 F7).
+  totp_last_step bigint
 );
 
 create table auth.session (
@@ -321,12 +334,32 @@ begin
      set locked_until = now() + make_interval(mins => p_lock_minutes), failed_count = 0
    where user_id = p_user_id and failed_count >= p_max
   returning locked_until into v_locked;
+  -- On lock, every session still waiting for its second factor ends (review M1 F2).
+  if v_locked is not null then
+    update auth.session set revoked_at = now()
+     where user_id = p_user_id and revoked_at is null and mfa_verified_at is null;
+  end if;
   return v_locked;
 end
 $$;
 
+-- Only a completed sign-in clears failures: password alone when the user has no 2FA,
+-- otherwise the second factor (review M1 F1). Internal; not granted to cbam_app.
+create function auth.clear_login_failures(p_user_id uuid) returns void
+  language sql
+  set search_path = pg_catalog, public, pg_temp
+  as $$
+    update auth.login_state set failed_count = 0, locked_until = null, last_login_at = now()
+     where user_id = p_user_id
+  $$;
+
+create function auth.is_locked(p_user_id uuid) returns boolean
+  language sql stable
+  set search_path = pg_catalog, public, pg_temp
+  as $$ select coalesce((select locked_until > now() from auth.login_state where user_id = p_user_id), false) $$;
+
 create function auth.create_session(p_user_id uuid, p_id_hash text, p_ttl_minutes int,
-                                    p_ip text, p_user_agent text)
+                                    p_ip text, p_user_agent text, p_fully_authenticated boolean)
   returns void
   language plpgsql security definer
   set search_path = pg_catalog, public, pg_temp
@@ -340,16 +373,17 @@ begin
   end if;
   insert into auth.session (id_hash, user_id, tenant_id, expires_at, ip, user_agent)
   values (p_id_hash, p_user_id, v_tenant, now() + make_interval(mins => p_ttl_minutes), p_ip, p_user_agent);
-  insert into auth.login_state as ls (user_id, failed_count, last_login_at)
-  values (p_user_id, 0, now())
-  on conflict (user_id) do update set failed_count = 0, locked_until = null, last_login_at = now();
+  insert into auth.login_state (user_id) values (p_user_id) on conflict (user_id) do nothing;
+  if p_fully_authenticated then
+    perform auth.clear_login_failures(p_user_id);
+  end if;
 end
 $$;
 
 -- Resolves a session cookie. Revoked, expired, idle or deactivated → no row (M1-R7).
 create function auth.session_lookup(p_id_hash text, p_idle_minutes int)
   returns table (user_id uuid, tenant_id uuid, role user_role, email text, display_name text,
-                 mfa_verified boolean, totp_enabled boolean, expires_at timestamptz)
+                 mfa_verified boolean, totp_enabled boolean, expires_at timestamptz, locked boolean)
   language plpgsql security definer
   set search_path = pg_catalog, public, pg_temp
   as $$
@@ -365,7 +399,8 @@ begin
      and s.expires_at > now()
      and s.last_seen_at > now() - make_interval(mins => p_idle_minutes)
   returning u.id, u.tenant_id, u.role, u.email::text, u.display_name,
-            s.mfa_verified_at is not null, u.totp_enabled_at is not null, s.expires_at;
+            s.mfa_verified_at is not null, u.totp_enabled_at is not null, s.expires_at,
+            auth.is_locked(u.id);
 end
 $$;
 
@@ -427,7 +462,7 @@ begin
 end
 $$;
 
-create function auth.enable_totp(p_id_hash text, p_recovery_code_hashes text[]) returns void
+create function auth.enable_totp(p_id_hash text, p_recovery_code_hashes text[], p_step bigint) returns void
   language plpgsql security definer
   set search_path = pg_catalog, public, pg_temp
   as $$
@@ -444,13 +479,29 @@ begin
   delete from auth.mfa_recovery_code where user_id = v_user;
   insert into auth.mfa_recovery_code (user_id, code_hash) select v_user, unnest(p_recovery_code_hashes);
   update auth.session set mfa_verified_at = now() where id_hash = p_id_hash;
+  update auth.login_state set totp_last_step = p_step where user_id = v_user;
+  perform auth.clear_login_failures(v_user);
 end
 $$;
 
-create function auth.mark_session_mfa_verified(p_id_hash text) returns void
-  language sql security definer
+-- Accepts a verified TOTP step once: refused while locked or for a step already used
+-- (review M1 F2, F7). Returns false when refused.
+create function auth.mark_session_mfa_verified(p_id_hash text, p_step bigint) returns boolean
+  language plpgsql security definer
   set search_path = pg_catalog, public, pg_temp
-  as $$ update auth.session set mfa_verified_at = now() where id_hash = p_id_hash and revoked_at is null $$;
+  as $$
+declare
+  v_user uuid := auth.session_user(p_id_hash);
+begin
+  if v_user is null or auth.is_locked(v_user) then return false; end if;
+  update auth.login_state set totp_last_step = p_step
+   where user_id = v_user and (totp_last_step is null or totp_last_step < p_step);
+  if not found then return false; end if;
+  update auth.session set mfa_verified_at = now() where id_hash = p_id_hash;
+  perform auth.clear_login_failures(v_user);
+  return true;
+end
+$$;
 
 create function auth.use_recovery_code(p_id_hash text, p_code_hash text) returns boolean
   language plpgsql security definer
@@ -459,10 +510,12 @@ create function auth.use_recovery_code(p_id_hash text, p_code_hash text) returns
 declare
   v_user uuid := auth.session_user(p_id_hash);
 begin
+  if v_user is null or auth.is_locked(v_user) then return false; end if;
   update auth.mfa_recovery_code set used_at = now()
    where user_id = v_user and code_hash = p_code_hash and used_at is null;
   if not found then return false; end if;
   update auth.session set mfa_verified_at = now() where id_hash = p_id_hash;
+  perform auth.clear_login_failures(v_user);
   return true;
 end
 $$;
@@ -552,14 +605,14 @@ revoke execute on all functions in schema auth from public;
 grant execute on function
   auth.login_lookup(text),
   auth.record_login_failure(uuid, int, int),
-  auth.create_session(uuid, text, int, text, text),
+  auth.create_session(uuid, text, int, text, text, boolean),
   auth.session_lookup(text, int),
   auth.revoke_session(text),
   auth.revoke_user_sessions(uuid),
   auth.get_totp_secret(text),
   auth.set_pending_totp_secret(text, text),
-  auth.enable_totp(text, text[]),
-  auth.mark_session_mfa_verified(text),
+  auth.enable_totp(text, text[], bigint),
+  auth.mark_session_mfa_verified(text, bigint),
   auth.use_recovery_code(text, text),
   auth.log_event(uuid, uuid, text, text, text, text, jsonb),
   auth.invitation_lookup(text),
@@ -601,15 +654,17 @@ drop function auth.accept_invitation(text, text, text);
 drop function auth.invitation_lookup(text);
 drop function auth.log_event(uuid, uuid, text, text, text, text, jsonb);
 drop function auth.use_recovery_code(text, text);
-drop function auth.mark_session_mfa_verified(text);
-drop function auth.enable_totp(text, text[]);
+drop function auth.mark_session_mfa_verified(text, bigint);
+drop function auth.enable_totp(text, text[], bigint);
 drop function auth.set_pending_totp_secret(text, text);
 drop function auth.get_totp_secret(text);
 drop function auth.session_user(text);
 drop function auth.revoke_user_sessions(uuid);
 drop function auth.revoke_session(text);
 drop function auth.session_lookup(text, int);
-drop function auth.create_session(uuid, text, int, text, text);
+drop function auth.create_session(uuid, text, int, text, text, boolean);
+drop function auth.is_locked(uuid);
+drop function auth.clear_login_failures(uuid);
 drop function auth.record_login_failure(uuid, int, int);
 drop function auth.login_lookup(text);
 drop function auth.act_as(uuid, text);

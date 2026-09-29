@@ -52,18 +52,24 @@ export function hotp(key: Buffer, counter: number, digits = 6, algorithm = 'sha1
 export const totpAt = (secret: string, time: number, digits = 6): string =>
   hotp(base32Decode(secret), Math.floor(time / 30_000), digits);
 
-/** Accepts the current step and one step either side for clock drift. */
-export function verifyTotp(secret: string, code: string, now = Date.now()): boolean {
+/**
+ * Returns the time step the code belongs to (current step or one either side, for clock
+ * drift), or null. The caller records the step so the same code cannot be used twice.
+ */
+export function matchTotpStep(secret: string, code: string, now = Date.now()): number | null {
   const key = base32Decode(secret);
   const step = Math.floor(now / 30_000);
   const given = Buffer.from(code);
-  let ok = false;
+  let matched: number | null = null;
   for (const s of [step - 1, step, step + 1]) {
     const expected = Buffer.from(hotp(key, s));
-    if (expected.length === given.length && timingSafeEqual(expected, given)) ok = true;
+    if (expected.length === given.length && timingSafeEqual(expected, given)) matched = s;
   }
-  return ok;
+  return matched;
 }
+
+export const verifyTotp = (secret: string, code: string, now = Date.now()): boolean =>
+  matchTotpStep(secret, code, now) !== null;
 
 export const otpauthUrl = (secret: string, account: string, issuer: string): string =>
   `otpauth://totp/${encodeURIComponent(`${issuer}:${account}`)}?secret=${secret}` +

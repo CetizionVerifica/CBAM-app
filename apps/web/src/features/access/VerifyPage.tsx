@@ -30,7 +30,7 @@ export function VerifyPage() {
     } catch (e) {
       if (e instanceof ApiError && e.code === 'account_locked') {
         setMe(null);
-        navigate('/sign-in', { replace: true });
+        navigate('/sign-in?reason=locked', { replace: true });
         return;
       }
       setFormError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');

@@ -13,6 +13,7 @@ import {
   agent,
   bootstrapTenant,
   inviteAndAccept,
+  nextCode,
   signIn,
   signInWithMfa,
   testApp,
@@ -166,7 +167,7 @@ describe('M1-R5 two-factor authentication', () => {
     expect((await a.get('/api/v1/users')).status).toBe(403);
 
     expect((await a.post('/api/v1/auth/mfa/verify', { code: '000000' })).status).toBe(400);
-    const ok = await a.post('/api/v1/auth/mfa/verify', { code: totpAt(secret, Date.now()) });
+    const ok = await a.post('/api/v1/auth/mfa/verify', { code: nextCode(secret) });
     expect(ok.status).toBe(200);
     expect((await a.get('/api/v1/users')).status).toBe(200);
   });
@@ -380,5 +381,98 @@ describe('G1 tenant isolation', () => {
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['bootstrap_tenant']));
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['act_as']));
     expect(rows.map((r) => r.fn)).not.toEqual(expect.arrayContaining(['session_user']));
+  });
+});
+
+// Regression tests for the findings in docs/reviews/M01.md.
+describe('review M1 fixes', () => {
+  const countFailures = async (email: string) =>
+    (await sql<{ failed_count: number; locked_until: Date | null }>`
+      select failed_count, locked_until from auth.login_state ls join app_user u on u.id = ls.user_id
+       where u.email = ${email}`.execute(t.su)).rows[0]!;
+
+  it('F1: signing in again with the password does not reset second-factor failures', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    await signInWithMfa(t, c.email);
+    const statuses: number[] = [];
+    for (let round = 0; round < 3; round++) {
+      const { a } = await signIn(t, c.email);
+      for (let i = 0; i < 2; i++) statuses.push((await a.post('/api/v1/auth/mfa/verify', { code: '000001' })).status);
+    }
+    // 5 failures lock the account; the 6th attempt's session was revoked by the lock.
+    expect(statuses.slice(0, 4)).toEqual([400, 400, 400, 400]);
+    expect(statuses[4]).toBe(429);
+    expect((await countFailures(c.email)).locked_until).not.toBeNull();
+    expect((await signIn(t, c.email)).res.status).toBe(429);
+  });
+
+  it('F1: a completed 2FA sign-in clears the failure count', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    const { secret } = await signInWithMfa(t, c.email);
+    const { a } = await signIn(t, c.email);
+    await a.post('/api/v1/auth/mfa/verify', { code: '000001' });
+    expect((await countFailures(c.email)).failed_count).toBe(1);
+    expect((await a.post('/api/v1/auth/mfa/verify', { code: nextCode(secret) })).status).toBe(200);
+    expect((await countFailures(c.email)).failed_count).toBe(0);
+  });
+
+  it('F2: a lock stops guessing in every session still waiting for 2FA', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    const { secret } = await signInWithMfa(t, c.email);
+    const s1 = (await signIn(t, c.email)).a;
+    const s2 = (await signIn(t, c.email)).a;
+    for (let i = 0; i < 5; i++) await s1.post('/api/v1/auth/mfa/verify', { code: '000001' });
+    // s2 is refused even with the right code.
+    const r = await s2.post('/api/v1/auth/mfa/verify', { code: nextCode(secret) });
+    expect(r.status).toBe(401);
+  });
+
+  it('F2: sessions that already passed 2FA are not ended by a lock', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    const { a: verified } = await signInWithMfa(t, c.email);
+    const guesser = (await signIn(t, c.email)).a;
+    for (let i = 0; i < 5; i++) await guesser.post('/api/v1/auth/mfa/verify', { code: '000001' });
+    expect((await verified.get('/api/v1/users')).status).toBe(200);
+  });
+
+  it('F7: a TOTP code works only once', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    const { secret } = await signInWithMfa(t, c.email);
+    const code = nextCode(secret);
+    const first = (await signIn(t, c.email)).a;
+    expect((await first.post('/api/v1/auth/mfa/verify', { code })).status).toBe(200);
+    const second = (await signIn(t, c.email)).a;
+    expect((await second.post('/api/v1/auth/mfa/verify', { code })).status).toBe(400);
+  });
+
+  it('F3: the database refuses an invitation for a user the caller may not manage', async () => {
+    const c = await inviteAndAccept(t, admin.a, 'consultant');
+    const target = await admin.a.post('/api/v1/users/invitations', {
+      email: `staff-${randomUUID().slice(0, 8)}@example.test`, displayName: 'New Admin', role: 'platform_admin',
+    });
+    const targetId: string = target.body.user.id;
+    await admin.a.post(`/api/v1/users/${targetId}/deactivate`, { reason: 'test' });
+    await admin.a.post(`/api/v1/users/${targetId}/reactivate`); // invited again, no open link
+    await expect(
+      withContext(t.db, { tenantId: admin.tenantId, userId: c.id, userRole: 'consultant', requestId: randomUUID() }, (tx) =>
+        tx.insertInto('invitation')
+          .values({ tenant_id: admin.tenantId, user_id: targetId, token_hash: sha256Hex(randomToken()), expires_at: sql`now() + interval '1 hour'` })
+          .execute(),
+      ),
+    ).rejects.toThrow(/row-level security/);
+  });
+
+  it('F4: X-Forwarded-For is ignored unless a proxy is configured', async () => {
+    const email = `xff-${randomUUID().slice(0, 8)}@example.test`;
+    await request(t.app).post('/api/v1/auth/login').set('Origin', 'http://localhost:5173').set('X-Forwarded-For', '203.0.113.77')
+      .send({ email, password: 'whatever password' });
+    const { rows } = await sql<{ ip: string }>`select ip from auth.auth_event where email = ${email}`.execute(t.su);
+    expect(rows[0]!.ip).not.toBe('203.0.113.77');
+  });
+
+  it('F6: a malformed Referer is refused as a bad origin, not a server error', async () => {
+    const r = await request(t.app).post('/api/v1/auth/login').set('Referer', 'not a url').send({});
+    expect(r.status).toBe(403);
+    expect(r.body.error.code).toBe('bad_origin');
   });
 });

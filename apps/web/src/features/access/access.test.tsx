@@ -51,6 +51,27 @@ describe('sign-in', () => {
   });
 });
 
+describe('review M1 fixes', () => {
+  // Behaviour check, not a regression test: review finding F8 did not reproduce (see docs/reviews/M01.md).
+  it('requests two-factor set-up once per visit', async () => {
+    const calls = mockApi({
+      'GET /auth/me': { status: 200, body: { ...consultant, mfa: 'setup_required' } },
+      'POST /auth/mfa/setup': { status: 200, body: { secret: 'GEZDGNBVGY3TQOJQ', otpauthUrl: 'otpauth://totp/x?secret=GEZDGNBVGY3TQOJQ' } },
+    });
+    const { TwoFactorSetupPage } = await import('./TwoFactorSetupPage');
+    const { StrictMode } = await import('react');
+    renderRoutes([{ path: '/', element: <StrictMode><TwoFactorSetupPage /></StrictMode> }], '/');
+    expect(await screen.findByText(/Enter this key/)).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === '/auth/mfa/setup')).toHaveLength(1);
+  });
+
+  it('F9: a lockout during 2FA is explained on the sign-in screen', async () => {
+    mockApi({});
+    renderRoutes([{ path: '/sign-in', element: <SignInPage /> }], '/sign-in?reason=locked');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many failed attempts. Try again in 15 minutes.');
+  });
+});
+
 describe('RequireSession', () => {
   it('sends a signed-out visitor to sign-in, keeping where they were going', async () => {
     mockApi({ 'GET /auth/me': { status: 401, body: { error: { code: 'unauthenticated', message: 'Sign in' } } } });

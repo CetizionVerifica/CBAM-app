@@ -2,7 +2,7 @@ import { MfaEnableRequest, type MeResponse } from '@cbam/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AuthLayout } from '@/components/AuthLayout';
@@ -26,8 +26,15 @@ export function TwoFactorSetupPage() {
     mutationFn: () => api.post<{ secret: string; otpauthUrl: string }>('/auth/mfa/setup'),
     onSuccess: async (d) => setQr(await QRCode.toString(d.otpauthUrl, { type: 'svg', margin: 0 })),
   });
+  // Once per mount: a second set-up call would replace the secret behind the QR code
+  // (React StrictMode runs effects twice in development; review M1 F8).
+  const started = useRef(false);
   const start = setup.mutate;
-  useEffect(() => start(), [start]);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    start();
+  }, [start]);
 
   const form = useForm<{ code: string }>({ resolver: zodResolver(MfaEnableRequest), defaultValues: { code: '' } });
   const onSubmit = form.handleSubmit(async (values) => {

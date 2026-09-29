@@ -20,6 +20,8 @@ export interface AuthState {
   user: SessionUser;
   sessionHash: string;
   mfa: MfaState;
+  /** Account locked after failed attempts; only sessions that passed 2FA carry on. */
+  locked: boolean;
 }
 
 declare global {
@@ -50,6 +52,7 @@ export function authenticate(db: Db, idleMinutes: number): RequestHandler {
       display_name: string;
       mfa_verified: boolean;
       totp_enabled: boolean;
+      locked: boolean;
     }>`select * from auth.session_lookup(${sessionHash}, ${idleMinutes})`.execute(db);
     const s = rows[0];
     if (s) {
@@ -57,6 +60,7 @@ export function authenticate(db: Db, idleMinutes: number): RequestHandler {
         sessionHash,
         user: { id: s.user_id, tenantId: s.tenant_id, role: s.role, email: s.email, displayName: s.display_name },
         mfa: mfaState(s.role, s.totp_enabled, s.mfa_verified),
+        locked: s.locked,
       };
     }
     next();
@@ -105,6 +109,16 @@ export function contextOf(req: Request, action?: string, reason?: string): Reque
   };
 }
 
+function originOf(req: Request): string | undefined {
+  if (req.headers.origin) return req.headers.origin;
+  if (!req.headers.referer) return undefined;
+  try {
+    return new URL(req.headers.referer).origin;
+  } catch {
+    return undefined; // malformed Referer is simply not our origin (review M1 F6)
+  }
+}
+
 /**
  * CSRF defence for cookie sessions: state-changing requests must come from the web origin.
  * Combined with SameSite=Lax cookies.
@@ -113,8 +127,7 @@ export function requireSameOrigin(webOrigin: string): RequestHandler {
   const allowed = new URL(webOrigin).origin;
   return (req: Request, _res: Response, next: NextFunction) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    const origin = req.headers.origin ?? (req.headers.referer ? new URL(req.headers.referer).origin : undefined);
-    if (origin !== allowed) {
+    if (originOf(req) !== allowed) {
       return next(new AppError(403, 'bad_origin', 'This request did not come from the CBAM app.'));
     }
     next();
