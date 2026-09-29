@@ -13,11 +13,14 @@ import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
 import { errorHandler, notFound } from './platform/errors';
 import type { Mailer } from './platform/mailer';
+import type { FileStore } from './platform/storage';
 
 export interface AppDeps {
   db: Db;
   logger: Logger;
   mailer: Mailer;
+  /** Evidence and report files (M12, M13); Cloudinary in dev and production, memory in tests. */
+  files: FileStore;
   config: Config;
 }
 

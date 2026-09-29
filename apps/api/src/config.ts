@@ -27,6 +27,19 @@ const Env = z.object({
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(12 * 60),
   SESSION_IDLE_MINUTES: z.coerce.number().int().positive().default(120),
   INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
+  /** File storage (decision D13): cloudinary://<api_key>:<api_secret>@<cloud_name>. Required in production. */
+  CLOUDINARY_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v), // an empty line in .env means "not set"
+    z
+      .string()
+      .regex(/^cloudinary:\/\/[^:@\s]+:[^@\s]+@[\w-]+$/, 'must look like cloudinary://<api_key>:<api_secret>@<cloud_name>')
+      .optional(),
+  ),
+  /** Root folder in the Cloudinary account, one per environment (e.g. cbam-dev, cbam-prod). */
+  CLOUDINARY_FOLDER: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, 'lowercase letters, digits, - and _').default('cbam-dev'),
+}).refine((e) => e.NODE_ENV !== 'production' || e.CLOUDINARY_URL, {
+  message: 'is required in production',
+  path: ['CLOUDINARY_URL'],
 });
 export type Config = z.infer<typeof Env>;
 
