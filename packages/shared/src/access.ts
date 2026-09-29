@@ -31,6 +31,9 @@ export const PERMISSIONS = {
   'users.invite': ['platform_admin', 'consultant'],
   'users.update': ['platform_admin'],
   'users.deactivate': ['platform_admin'],
+  // M2: create/edit/delete clients, installations, importers; manage assignments.
+  'registry.write': ['platform_admin', 'consultant'],
+  'assignments.manage': ['platform_admin', 'consultant'],
 } as const satisfies Record<string, readonly UserRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

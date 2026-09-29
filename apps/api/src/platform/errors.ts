@@ -8,6 +8,7 @@ export class AppError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    readonly issues?: { path: (string | number)[]; message: string }[],
   ) {
     super(message);
   }
@@ -30,7 +31,9 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
   if (err instanceof AppError) {
-    res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details } });
+    res.status(err.status).json({
+      error: { code: err.code, message: err.message, details: err.details, ...(err.issues && { issues: err.issues }) },
+    });
     return;
   }
   // Database refused on privilege or row-level security: the API check missed a case,

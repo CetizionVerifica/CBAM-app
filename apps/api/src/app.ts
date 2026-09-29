@@ -7,6 +7,7 @@ import { sql } from 'kysely';
 import type { Logger } from 'pino';
 import type { Config } from './config';
 import { authRouter, usersRouter } from './modules/m01-access';
+import { registryRouter } from './modules/m02-registry/registry.router';
 import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
 import { errorHandler, notFound } from './platform/errors';
@@ -50,6 +51,7 @@ export function createApp({ db, logger, mailer, config }: AppDeps) {
   const access = { db, mailer, config };
   api.use('/auth', authRouter(access));
   api.use('/users', usersRouter(access));
+  api.use('/', registryRouter({ db }));
 
   app.use('/api/v1', api);
   app.use(notFound);

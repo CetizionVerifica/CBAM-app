@@ -23,6 +23,8 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export type Numeric = ColumnType<string, number | string, number | string>;
+
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export type UserRole = "consultant" | "contributor" | "platform_admin" | "recipient" | "reviewer";
@@ -64,6 +66,71 @@ export interface AuditAuditLog {
   tenant_id: string | null;
 }
 
+export interface Client {
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  contact_email: string;
+  contact_name: string;
+  contact_phone: string | null;
+  country_code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  deleted_at: Timestamp | null;
+  id: Generated<string>;
+  legal_name: string;
+  postcode: string | null;
+  registration_no: string | null;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface EuImporter {
+  address_line1: string | null;
+  city: string | null;
+  client_id: string;
+  contact_email: string | null;
+  contact_name: string | null;
+  country_code: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  deleted_at: Timestamp | null;
+  eori: string;
+  id: Generated<string>;
+  name: string;
+  postcode: string | null;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface Installation {
+  auth_rep_email: string | null;
+  auth_rep_name: string | null;
+  auth_rep_phone: string | null;
+  city: string;
+  client_id: string;
+  country_code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  deleted_at: Timestamp | null;
+  economic_activity: string | null;
+  id: Generated<string>;
+  latitude: Numeric | null;
+  longitude: Numeric | null;
+  name_en: string;
+  name_local: string | null;
+  permit_no: string | null;
+  po_box: string | null;
+  postcode: string | null;
+  street: string;
+  tenant_id: string;
+  un_locode: string | null;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
 export interface Invitation {
   created_at: Generated<Timestamp>;
   created_by: Generated<string>;
@@ -76,6 +143,12 @@ export interface Invitation {
   updated_by: Generated<string>;
   used_at: Timestamp | null;
   user_id: string;
+}
+
+export interface RefCountry {
+  code: string;
+  name: string;
+  source: string;
 }
 
 export interface Tenant {
@@ -115,7 +188,11 @@ export interface UserInstallationAssignment {
 export interface DB {
   app_user: AppUser;
   "audit.audit_log": AuditAuditLog;
+  client: Client;
+  eu_importer: EuImporter;
+  installation: Installation;
   invitation: Invitation;
+  ref_country: RefCountry;
   tenant: Tenant;
   user_client_assignment: UserClientAssignment;
   user_installation_assignment: UserInstallationAssignment;
