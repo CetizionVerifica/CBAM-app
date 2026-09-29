@@ -23,10 +23,11 @@ export function PublishDialog({ version, onClose, onPublished }: { version: Libr
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/library/versions/${version.id}/publish`, { confirmCode: code });
+      await api.post(`/library/versions/${version.id}/publish`, { confirmCode: code, diffFingerprint: diff.data!.fingerprint });
       onPublished();
     } catch (e) {
       setError(e instanceof ApiError ? (e.issues[0]?.message ?? e.message) : 'Something went wrong. Try again.');
+      if (e instanceof ApiError && e.code === 'stale_diff') void diff.refetch();
       setBusy(false);
     }
   };
@@ -40,12 +41,12 @@ export function PublishDialog({ version, onClose, onPublished }: { version: Libr
     >
       <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
         <h3 className="text-h3 font-semibold text-ink">Changes from {version.basedOnCode ?? 'an empty library'}</h3>
-        {diff.isPending ? <SkeletonRows rows={4} /> : diff.isError ? <ErrorState message={diff.error.message} /> : <LibraryDiffView diff={diff.data} />}
+        {diff.isPending ? <SkeletonRows rows={4} /> : diff.isError ? <ErrorState message={diff.error.message} /> : <LibraryDiffView diff={diff.data.diff} />}
         <Field label={`Type ${version.code} to confirm`} value={code} autoComplete="off" onChange={(e) => setCode(e.target.value)} />
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="confirmDestructive" disabled={busy || code.trim() !== version.code} onClick={publish}>
+          <Button variant="primary" disabled={busy || !diff.data || code.trim() !== version.code} onClick={publish}>
             Publish version
           </Button>
         </div>

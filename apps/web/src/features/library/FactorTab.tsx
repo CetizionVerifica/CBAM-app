@@ -106,14 +106,14 @@ export function FactorTab({ version, kind, editable }: { version: LibraryVersion
               mode="library"
               kindLocked
               initial={factorFormValues(kind, editing === 'new' ? undefined : editing)}
-              submitLabel="Save factor"
+              submitLabel={editing === 'new' ? 'Add factor' : 'Save factor'}
               onCancel={() => setEditing(null)}
               onSubmit={async (values) => {
                 if (editing === 'new') await api.post(`/library/versions/${version.id}/factors`, values);
                 else await api.patch(`/library/factors/${editing.id}`, values);
                 await qc.invalidateQueries({ queryKey: libraryKeys.factors(version.id) });
                 void refresh();
-                toast('Factor saved');
+                toast(editing === 'new' ? 'Factor added' : 'Factor saved');
                 setEditing(null);
               }}
             />

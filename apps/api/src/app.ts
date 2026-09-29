@@ -26,11 +26,11 @@ export function createApp({ db, logger, mailer, config }: AppDeps) {
   app.disable('x-powered-by');
   app.set('trust proxy', config.TRUST_PROXY);
   app.use(helmet());
-  // Library imports carry a CSV file in the body (M4-R4); every other request stays small.
+  // Library imports carry a CSV file (M4-R4) and parse their own larger body, after
+  // authentication and the permission check (review M4 F8); everything else stays small.
   const jsonSmall = express.json({ limit: '1mb' });
-  const jsonImport = express.json({ limit: '10mb' });
   app.use((req, res, next) =>
-    (/^\/api\/v1\/library\/versions\/[^/]+\/imports$/.test(req.path) ? jsonImport : jsonSmall)(req, res, next),
+    /^\/api\/v1\/library\/versions\/[^/]+\/imports$/.test(req.path) ? next() : jsonSmall(req, res, next),
   );
   app.use(cookieParser());
   app.use(

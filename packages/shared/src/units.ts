@@ -19,6 +19,7 @@ export const DIMENSIONS = {
   ef_volume: 'tCO2/Nm3',
   gwp: 'tCO2e/tGHG',
   see: 'tCO2e/t',
+  see_electricity: 'tCO2e/MWh',
   carbon_content: 'tC/t',
   fraction: 'fraction',
 } as const;
@@ -73,6 +74,8 @@ export const UNITS = {
   // specific embedded emissions
   'tCO2e/t': { dimension: 'see', toBase: '1', label: 'tCO₂e/t' },
   'kgCO2e/t': { dimension: 'see', toBase: '0.001', label: 'kgCO₂e/t' },
+  // electricity as a CBAM good is declared per MWh (goods category unit, review M4 F3)
+  'tCO2e/MWh': { dimension: 'see_electricity', toBase: '1', label: 'tCO₂e/MWh' },
   // carbon content
   'tC/t': { dimension: 'carbon_content', toBase: '1', label: 'tC/t' },
   '%C': { dimension: 'carbon_content', toBase: '0.01', label: '% C' },

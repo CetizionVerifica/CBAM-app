@@ -193,7 +193,7 @@ export function LibraryPage() {
           onApplied={(rows) => {
             void refresh();
             setDialog(null);
-            toast(`Import applied: ${rows} rows`);
+            toast(`Applied to draft: ${rows} rows`);
           }}
         />
       )}

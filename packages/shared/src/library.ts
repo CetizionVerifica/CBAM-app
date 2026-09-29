@@ -27,7 +27,7 @@ export const FACTOR_KIND_DIMENSIONS: Record<FactorKind, readonly Dimension[]> = 
   ncv: ['ncv_mass', 'ncv_volume'],
   gwp: ['gwp'],
   grid_factor: ['ef_electricity'],
-  default_see: ['see'],
+  default_see: ['see', 'see_electricity'],
 };
 
 export const unitsForKind = (kind: FactorKind): UnitId[] => FACTOR_KIND_DIMENSIONS[kind].flatMap((d) => unitsFor(d));
@@ -128,7 +128,7 @@ export function checkFactor(v: KeyShape, ctx: z.RefinementCtx) {
   const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
   const allowed = unitsForKind(v.kind);
   if (!isUnitId(v.unit) || !allowed.includes(v.unit)) {
-    issue('unit', `For a ${FACTOR_KIND_LABELS[v.kind].toLowerCase()}, use one of: ${allowed.map((u) => UNITS[u].label).join(', ')}.`);
+    issue('unit', `Use one of these units for this kind (${FACTOR_KIND_LABELS[v.kind].toLowerCase()}): ${allowed.map((u) => UNITS[u].label).join(', ')}.`);
   }
   if (v.kind === 'grid_factor') {
     if (!v.countryCode) issue('countryCode', 'A grid emission factor needs a country.');
@@ -233,6 +233,8 @@ export type CnCodeRow = z.infer<typeof CnCodeRow>;
 export const PublishRequest = z.object({
   /** The version code typed back, to confirm a wide-impact action (design system 7). */
   confirmCode: z.string().trim().min(1, 'Type the version code to confirm.'),
+  /** From GET …/diff: publishing is refused if the draft changed after the diff was shown. */
+  diffFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 // ---------------------------------------------------------------------------

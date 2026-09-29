@@ -52,7 +52,7 @@ export const useGoods = (versionId: string) =>
 export const useVersionDiff = (versionId: string, enabled: boolean) =>
   useQuery({
     queryKey: libraryKeys.diff(versionId),
-    queryFn: async () => (await api.get<{ diff: LibraryDiff }>(`/library/versions/${versionId}/diff`)).diff,
+    queryFn: () => api.get<{ diff: LibraryDiff; fingerprint: string }>(`/library/versions/${versionId}/diff`),
     enabled,
   });
 

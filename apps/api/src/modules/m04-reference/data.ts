@@ -75,9 +75,14 @@ export async function loadVersion(tx: Tx, id: string) {
   return v;
 }
 
-/** API-side lock check (G2); the database trigger is the backstop (M4-R2). */
+/**
+ * API-side lock check (G2); the database trigger is the backstop (M4-R2). Locks the version
+ * row for the rest of the transaction, so draft writes, imports and publishing run one at a
+ * time and a publish never races an edit (review M4 F1, F5).
+ */
 export async function loadDraft(tx: Tx, id: string) {
-  const v = await loadVersion(tx, id);
+  const v = await tx.selectFrom('library_version').selectAll().where('id', '=', id).forUpdate().executeTakeFirst();
+  if (!v) throw notFound('library version');
   if (v.status !== 'draft') {
     throw new AppError(409, 'library_published', `Library version ${v.code} is published and cannot be changed. Create a new draft version.`);
   }
@@ -234,6 +239,9 @@ async function recordsOf(tx: Tx, versionId: string, dataset: DiffDataset): Promi
     }
   }
 }
+
+/** Identifies a diff, so publishing can refuse when the draft changed after review. */
+export const diffFingerprint = (diff: LibraryDiff) => createHash('sha256').update(JSON.stringify(diff)).digest('hex');
 
 /** Every dataset that differs between two versions (publish preview, M4-R4 / design system 6.12). */
 export async function diffVersions(tx: Tx, fromId: string | null, toId: string): Promise<LibraryDiff> {

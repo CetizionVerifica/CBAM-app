@@ -39,7 +39,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // Body parser: too large or not JSON.
   const bodyErr = err as { type?: string; status?: number };
   if (bodyErr.type === 'entity.too.large') {
-    res.status(413).json({ error: { code: 'too_large', message: 'This request is too large. Files can be at most 8 MB.' } });
+    res.status(413).json({ error: { code: 'too_large', message: 'This request is too large.' } });
     return;
   }
   if (bodyErr.type === 'entity.parse.failed') {

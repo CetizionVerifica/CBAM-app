@@ -30,8 +30,14 @@ async function newDraft(code = `t-${randomUUID().slice(0, 8)}`) {
   return res.body.version as { id: string; code: string; status: string };
 }
 
+async function reviewed(versionId: string) {
+  const res = await admin.a.get(`/api/v1/library/versions/${versionId}/diff`);
+  expect(res.status).toBe(200);
+  return res.body.fingerprint as string;
+}
+
 async function publish(v: { id: string; code: string }) {
-  const res = await admin.a.post(`/api/v1/library/versions/${v.id}/publish`, { confirmCode: v.code });
+  const res = await admin.a.post(`/api/v1/library/versions/${v.id}/publish`, { confirmCode: v.code, diffFingerprint: await reviewed(v.id) });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
 }
 
@@ -155,6 +161,48 @@ describe('M4-R2 published versions are immutable', () => {
     ).rejects.toMatchObject({ code: '55000' });
   });
 
+  it('F1: refuses to publish when the draft changed after the diff was reviewed', async () => {
+    const draft = await newDraft();
+    const fingerprint = await reviewed(draft.id);
+    await admin.a.post(`/api/v1/library/versions/${draft.id}/factors`, {
+      kind: 'ncv', subject: 'Diesel', value: '43', unit: 'GJ/t', validFrom: '2026-01-01', source: 'IPCC',
+    });
+    const res = await admin.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: draft.code, diffFingerprint: fingerprint });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('stale_diff');
+  });
+
+  it('F1: an edit that started before publish cannot land in the published version', async () => {
+    const draft = await newDraft();
+    const gas = natGas(await factors(draft.id));
+    const fingerprint = await reviewed(draft.id);
+    const ctx = { tenantId: admin.tenantId, userId: admin.adminId, userRole: 'platform_admin' as const, requestId: 'test' };
+    // A direct write holds its transaction open while publish runs.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const edit = withContext(t.db, ctx, async (tx) => {
+      await tx.updateTable('library_factor').set({ value: '77', value_si: '77' }).where('id', '=', gas.id).execute();
+      await held;
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    const publishing = admin.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: draft.code, diffFingerprint: fingerprint });
+    await new Promise((r) => setTimeout(r, 200));
+    release();
+    await edit;
+    const res = await publishing;
+    // Publish waited for the edit, then saw a different draft than the one reviewed.
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('stale_diff');
+  });
+
+  it('F7: two drafts created at once give one draft and one 409', async () => {
+    const [a, b] = await Promise.all([
+      admin.a.post('/api/v1/library/versions', { code: `t-${randomUUID().slice(0, 8)}` }),
+      admin.a.post('/api/v1/library/versions', { code: `t-${randomUUID().slice(0, 8)}` }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+  });
+
   it('allows only one draft at a time', async () => {
     await newDraft();
     const second = await admin.a.post('/api/v1/library/versions', { code: `t-${randomUUID().slice(0, 8)}` });
@@ -186,7 +234,7 @@ describe('M4-R3 versions are pinned, AT1', () => {
 
   it('asks for the version code to confirm publishing', async () => {
     const draft = await newDraft();
-    const res = await admin.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: 'wrong' });
+    const res = await admin.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: 'wrong', diffFingerprint: await reviewed(draft.id) });
     expect(res.status).toBe(400);
     expect(res.body.error.issues).toEqual([{ path: ['confirmCode'], message: `Type ${draft.code} to confirm.` }]);
   });
@@ -265,6 +313,18 @@ describe('M4-R4 import with diff preview, AT2', () => {
     expect(apply.body.error.code).toBe('stale_preview');
   });
 
+  it('F5: two previews applied at once — the second is refused as stale', async () => {
+    const draft = await newDraft();
+    const up = (subject: string) =>
+      admin.a.post(`/api/v1/library/versions/${draft.id}/imports`, {
+        dataset: 'factors', fileName: 'ncv.csv', content: `${FACTOR_HEADER}\nncv,${subject},,,,,43,GJ/t,2026-01-01,,,,IPCC,`,
+      });
+    const [p1, p2] = [await up('Diesel'), await up('Petrol')];
+    const results = await Promise.all([p1, p2].map((p) => admin.a.post(`/api/v1/library/imports/${p.body.preview.id}/apply`)));
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect((await factors(draft.id, 'ncv')).length).toBe(1);
+  });
+
   it('replaces CN codes from a file', async () => {
     const draft = await newDraft();
     const res = await admin.a.post(`/api/v1/library/versions/${draft.id}/imports`, {
@@ -285,7 +345,7 @@ describe('M4-R5 who may publish, AT3', () => {
   it('AT3: a consultant cannot create, edit or publish a library version', async () => {
     expect((await consultant.a.post('/api/v1/library/versions', { code: 'c-1' })).status).toBe(403);
     const draft = await newDraft();
-    expect((await consultant.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: draft.code })).status).toBe(403);
+    expect((await consultant.a.post(`/api/v1/library/versions/${draft.id}/publish`, { confirmCode: draft.code, diffFingerprint: 'a'.repeat(64) })).status).toBe(403);
     expect(
       (await consultant.a.post(`/api/v1/library/versions/${draft.id}/factors`, { kind: 'ncv', subject: 'X', value: '1', unit: 'GJ/t', validFrom: '2026-01-01', source: 'x' })).status,
     ).toBe(403);
@@ -411,6 +471,17 @@ describe('M4-R6 grid factors by country, region and year', () => {
   });
 });
 
+describe('F3 default values for electricity', () => {
+  it('accepts tCO2e/MWh for a default value', async () => {
+    const draft = await newDraft();
+    const res = await admin.a.post(`/api/v1/library/versions/${draft.id}/factors`, {
+      kind: 'default_see', subject: '27160000', component: 'direct', countryCode: 'TR', value: '0.5', unit: 'tCO2e/MWh', validFrom: '2026-01-01', source: 'Commission defaults',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.factor).toMatchObject({ valueSi: '0.5', siUnit: 'tCO2e/MWh' });
+  });
+});
+
 describe('M4-R7 regulatory rules as configuration', () => {
   it('holds indirect-emission relevance, routes and relevant precursors from the template', async () => {
     const seed = await (await admin.a.get('/api/v1/library/versions')).body.versions.find((v: { code: string }) => v.code === '2026.1');
@@ -457,7 +528,7 @@ describe('audit (G3)', () => {
     const draft = await newDraft();
     const { rows } = await sql<{ action: string; tenant_id: string; op: string }>`
       select action, tenant_id, op from audit.audit_log where record_id = ${draft.id} order by id`.execute(t.su);
-    expect(rows).toEqual([{ action: 'Create draft library version', tenant_id: admin.tenantId, op: 'INSERT' }]);
+    expect(rows).toEqual([{ action: 'Create draft version', tenant_id: admin.tenantId, op: 'INSERT' }]);
   });
 
   it('the import payload is redacted from the log', async () => {

@@ -1123,7 +1123,7 @@ $$;
 create trigger guard_library_version before insert or update or delete on library_version
   for each row execute function app.guard_library_version();
 
--- Content of a published version is frozen. A missing parent means the draft itself is
+-- Content of a published version is frozen. A missing (or RLS-hidden) parent means the draft itself is
 -- being deleted (cascade), which is allowed.
 create function app.guard_library_content() returns trigger
   language plpgsql
@@ -1134,8 +1134,10 @@ begin
   if tg_op = 'UPDATE' and new.library_version_id is distinct from old.library_version_id then
     raise exception 'Library content cannot move to another version' using errcode = 'object_not_in_prerequisite_state';
   end if;
+  -- FOR SHARE: waits for a publish in progress and then sees 'published' (review M4 F1).
   select status into v_status from library_version
-   where id = case when tg_op = 'DELETE' then old.library_version_id else new.library_version_id end;
+   where id = case when tg_op = 'DELETE' then old.library_version_id else new.library_version_id end
+     for share;
   if v_status = 'published' then
     raise exception 'Library version is published and cannot be changed'
       using errcode = 'object_not_in_prerequisite_state';

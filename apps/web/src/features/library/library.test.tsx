@@ -63,6 +63,7 @@ describe('reference library', () => {
       'GET /library/versions/v2/diff': {
         status: 200,
         body: {
+          fingerprint: 'f'.repeat(64),
           diff: {
             factors: {
               added: [],
@@ -83,7 +84,7 @@ describe('reference library', () => {
     expect(confirm).toBeDisabled();
     await userEvent.type(within(dialog).getByLabelText('Type 2026.2 to confirm'), '2026.2');
     await userEvent.click(confirm);
-    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ confirmCode: '2026.2' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ confirmCode: '2026.2', diffFingerprint: 'f'.repeat(64) }));
     expect(await screen.findByText('Version 2026.2 published')).toBeInTheDocument();
   });
 

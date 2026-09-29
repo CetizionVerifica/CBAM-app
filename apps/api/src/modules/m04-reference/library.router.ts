@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { sql } from 'kysely';
 import { z } from 'zod';
 import {
@@ -26,6 +26,7 @@ import {
   cnRecord,
   currentVersion,
   datasetState,
+  diffFingerprint,
   diffVersions,
   factorColumns,
   factorDto,
@@ -47,7 +48,11 @@ const idParam = (raw: unknown, what: string): string => {
   return r.data;
 };
 
-const VERSION_UNIQUE = { library_version_code_key: 'A library version with this code already exists.' };
+const VERSION_UNIQUE = {
+  library_version_code_key: 'A library version with this code already exists.',
+  // Two admins creating a draft at once (review M4 F7).
+  library_version_one_draft: 'Another draft version was just created. Open it, or discard it first.',
+};
 const FACTOR_UNIQUE = {
   library_factor_unique_key:
     'This version already has a factor for this kind, subject, country, region, year and component.',
@@ -113,7 +118,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
 
   router.post('/library/versions', write, async (req, res) => {
     const input = CreateLibraryVersionRequest.parse(req.body);
-    const ctx = contextOf(req, 'Create draft library version');
+    const ctx = contextOf(req, 'Create draft version');
     const id = await withContext(db, ctx, async (tx) => {
       const draft = await tx.selectFrom('library_version').select('code').where('status', '=', 'draft').executeTakeFirst();
       if (draft) throw new AppError(409, 'draft_exists', `Draft version ${draft.code} is open. Publish or discard it first.`);
@@ -133,7 +138,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
 
   router.delete('/library/versions/:id', write, async (req, res) => {
     const id = idParam(req.params.id, 'library version');
-    await withContext(db, contextOf(req, 'Discard draft library version'), async (tx) => {
+    await withContext(db, contextOf(req, 'Discard draft'), async (tx) => {
       await loadDraft(tx, id);
       await tx.deleteFrom('library_version').where('id', '=', id).execute();
     });
@@ -147,18 +152,22 @@ export function libraryRouter({ db }: { db: Db }): Router {
       const v = await loadVersion(tx, id);
       return diffVersions(tx, v.based_on_id, v.id);
     });
-    res.json({ diff });
+    res.json({ diff, fingerprint: diffFingerprint(diff) });
   });
 
   router.post('/library/versions/:id/publish', write, async (req, res) => {
     const id = idParam(req.params.id, 'library version');
-    const { confirmCode } = PublishRequest.parse(req.body);
-    await withContext(db, contextOf(req, 'Publish library version'), async (tx) => {
-      const v = await loadDraft(tx, id);
+    const { confirmCode, diffFingerprint: reviewed } = PublishRequest.parse(req.body);
+    await withContext(db, contextOf(req, 'Publish version'), async (tx) => {
+      const v = await loadDraft(tx, id); // locks the draft: no edit can land between check and publish
       if (confirmCode !== v.code) {
         throw new AppError(400, 'validation_failed', 'Some fields are not valid. Fix them and try again.', undefined, [
           { path: ['confirmCode'], message: `Type ${v.code} to confirm.` },
         ]);
+      }
+      // Publish exactly what the admin reviewed (review M4 F1).
+      if (diffFingerprint(await diffVersions(tx, v.based_on_id, v.id)) !== reviewed) {
+        throw new AppError(409, 'stale_diff', 'The draft changed after you opened this review. Check the changes again before publishing.');
       }
       await tx.updateTable('library_version').set({ status: 'published' }).where('id', '=', id).execute();
     });
@@ -370,13 +379,13 @@ export function libraryRouter({ db }: { db: Db }): Router {
     return { inScope, fingerprint };
   };
 
-  router.post('/library/versions/:id/imports', write, async (req, res) => {
+  router.post('/library/versions/:id/imports', write, express.json({ limit: '10mb' }), async (req, res) => {
     const versionId = idParam(req.params.id, 'library version');
     const input = ImportRequest.parse(req.body);
     const parsed = parseImport(input.dataset, input.content);
     if (!parsed.ok) throw rejected(parsed.errors);
 
-    const preview = await withContext(db, contextOf(req, 'Upload library import'), async (tx) => {
+    const preview = await withContext(db, contextOf(req, 'Check file'), async (tx) => {
       await loadDraft(tx, versionId);
       const refErrors = await checkReferences(tx, versionId, parsed, parsed.lines);
       if (refErrors.length) throw rejected(refErrors);
@@ -406,7 +415,7 @@ export function libraryRouter({ db }: { db: Db }): Router {
 
   router.post('/library/imports/:id/apply', write, async (req, res) => {
     const id = idParam(req.params.id, 'import');
-    const ctx = contextOf(req, 'Apply library import');
+    const ctx = contextOf(req, 'Apply to draft');
     const result = await withContext(db, ctx, async (tx) => {
       const imp = await tx.selectFrom('library_import').selectAll().where('id', '=', id).executeTakeFirst();
       if (!imp) throw notFound('import');

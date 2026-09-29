@@ -75,7 +75,7 @@ describe('parseImport — factors', () => {
       { row: 2, column: 'country_code', message: 'A grid emission factor needs a country.' },
       { row: 2, column: 'year', message: 'A grid emission factor needs a year.' },
       { row: 3, column: 'region', message: 'Only grid emission factors have a region.' },
-      { row: 4, column: 'unit', message: 'For a emission factor, use one of: tCO₂/TJ, kgCO₂/GJ, tCO₂/t, kgCO₂/t, tCO₂/Nm³, tCO₂/1000 Nm³.' },
+      { row: 4, column: 'unit', message: 'Use one of these units for this kind (emission factor): tCO₂/TJ, kgCO₂/GJ, tCO₂/t, kgCO₂/t, tCO₂/Nm³, tCO₂/1000 Nm³.' },
       { row: 5, column: 'valid_to', message: 'The end date must be on or after the start date.' },
       { row: 5, column: 'plausible_max', message: 'The upper bound must be at least the lower bound.' },
     ]);
