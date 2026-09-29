@@ -36,6 +36,22 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     });
     return;
   }
+  // Body parser: too large or not JSON.
+  const bodyErr = err as { type?: string; status?: number };
+  if (bodyErr.type === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'too_large', message: 'This request is too large. Files can be at most 8 MB.' } });
+    return;
+  }
+  if (bodyErr.type === 'entity.parse.failed') {
+    res.status(400).json({ error: { code: 'bad_json', message: 'The request could not be read. Try again.' } });
+    return;
+  }
+  // Locked record (published library version, approved period): the API check missed a
+  // case, but the database trigger held (G4, M4-R2).
+  if ((err as { code?: string }).code === '55000') {
+    res.status(409).json({ error: { code: 'locked', message: 'This record is locked and cannot be changed.' } });
+    return;
+  }
   // Database refused on privilege or row-level security: the API check missed a case,
   // but the database held (G2). Answer as a normal permission error.
   if ((err as { code?: string }).code === '42501') {

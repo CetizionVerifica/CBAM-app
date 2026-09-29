@@ -16,6 +16,9 @@ export const DIMENSIONS = {
   ef_energy: 'tCO2/TJ',
   ef_mass: 'tCO2/t',
   ef_electricity: 'tCO2/MWh',
+  ef_volume: 'tCO2/Nm3',
+  gwp: 'tCO2e/tGHG',
+  see: 'tCO2e/t',
   carbon_content: 'tC/t',
   fraction: 'fraction',
 } as const;
@@ -63,6 +66,13 @@ export const UNITS = {
   'tCO2/MWh': { dimension: 'ef_electricity', toBase: '1', label: 'tCO₂/MWh' },
   'kgCO2/kWh': { dimension: 'ef_electricity', toBase: '1', label: 'kgCO₂/kWh' },
   'gCO2/kWh': { dimension: 'ef_electricity', toBase: '0.001', label: 'gCO₂/kWh' },
+  'tCO2/Nm3': { dimension: 'ef_volume', toBase: '1', label: 'tCO₂/Nm³' },
+  'tCO2/kNm3': { dimension: 'ef_volume', toBase: '0.001', label: 'tCO₂/1000 Nm³' },
+  // global warming potential: tonnes CO₂e per tonne of the gas
+  'tCO2e/tGHG': { dimension: 'gwp', toBase: '1', label: 'tCO₂e/t gas' },
+  // specific embedded emissions
+  'tCO2e/t': { dimension: 'see', toBase: '1', label: 'tCO₂e/t' },
+  'kgCO2e/t': { dimension: 'see', toBase: '0.001', label: 'kgCO₂e/t' },
   // carbon content
   'tC/t': { dimension: 'carbon_content', toBase: '1', label: 'tC/t' },
   '%C': { dimension: 'carbon_content', toBase: '0.01', label: '% C' },

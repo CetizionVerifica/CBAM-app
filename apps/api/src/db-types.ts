@@ -86,6 +86,46 @@ export interface Client {
   updated_by: Generated<string>;
 }
 
+export interface ClientFactorOverride {
+  client_id: string;
+  component: string | null;
+  country_code: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  id: Generated<string>;
+  justification: string;
+  kind: string;
+  region: string | null;
+  si_unit: string;
+  source: string;
+  status: Generated<string>;
+  subject: string;
+  tenant_id: string;
+  unit: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  valid_from: string;
+  valid_to: string | null;
+  value: Numeric;
+  value_si: Numeric;
+  year: number | null;
+}
+
+export interface CnCode {
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  description: string;
+  goods_category_code: string;
+  id: Generated<string>;
+  library_version_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
 export interface EuImporter {
   address_line1: string | null;
   city: string | null;
@@ -101,6 +141,24 @@ export interface EuImporter {
   name: string;
   postcode: string | null;
   tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface GoodsCategory {
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  indirect_relevant_definitive: boolean;
+  indirect_relevant_transitional: boolean;
+  library_version_id: string;
+  name: string;
+  route_relevant: boolean;
+  sector: string;
+  sort_order: number;
+  template_name: string;
+  unit: string;
   updated_at: Generated<Timestamp>;
   updated_by: Generated<string>;
 }
@@ -145,10 +203,118 @@ export interface Invitation {
   user_id: string;
 }
 
+export interface LibraryFactor {
+  component: string | null;
+  country_code: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  kind: string;
+  library_version_id: string;
+  notes: string | null;
+  plausible_max: Numeric | null;
+  plausible_min: Numeric | null;
+  region: string | null;
+  si_unit: string;
+  source: string;
+  subject: string;
+  unit: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  valid_from: string;
+  valid_to: string | null;
+  value: Numeric;
+  value_si: Numeric;
+  year: number | null;
+}
+
+export interface LibraryImport {
+  applied_at: Timestamp | null;
+  base_fingerprint: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  dataset: string;
+  file_name: string;
+  file_sha256: string;
+  id: Generated<string>;
+  library_version_id: string;
+  row_count: number;
+  rows: Json;
+  status: Generated<string>;
+  summary: Json;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface LibraryVersion {
+  based_on_id: string | null;
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  notes: string | null;
+  published_at: Timestamp | null;
+  published_by: string | null;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface ProductionRoute {
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  library_version_id: string;
+  name: string;
+  sort_order: number;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface QualifyingParameterDef {
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  library_version_id: string;
+  name: string;
+  position: number;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
 export interface RefCountry {
   code: string;
   name: string;
   source: string;
+}
+
+export interface RouteRelevantPrecursor {
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  library_version_id: string;
+  precursor_category_code: string;
+  route_code: string | null;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface TemplateVersion {
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  file_name: string;
+  file_sha256: string;
+  id: Generated<string>;
+  released_on: string;
+  source: string;
+  title: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
 }
 
 export interface Tenant {
@@ -189,10 +355,20 @@ export interface DB {
   app_user: AppUser;
   "audit.audit_log": AuditAuditLog;
   client: Client;
+  client_factor_override: ClientFactorOverride;
+  cn_code: CnCode;
   eu_importer: EuImporter;
+  goods_category: GoodsCategory;
   installation: Installation;
   invitation: Invitation;
+  library_factor: LibraryFactor;
+  library_import: LibraryImport;
+  library_version: LibraryVersion;
+  production_route: ProductionRoute;
+  qualifying_parameter_def: QualifyingParameterDef;
   ref_country: RefCountry;
+  route_relevant_precursor: RouteRelevantPrecursor;
+  template_version: TemplateVersion;
   tenant: Tenant;
   user_client_assignment: UserClientAssignment;
   user_installation_assignment: UserInstallationAssignment;
