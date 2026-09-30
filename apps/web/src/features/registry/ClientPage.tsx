@@ -17,6 +17,7 @@ import { ImportersPanel } from './ImportersPanel';
 import { type ClientBundle, keys, useClient } from './queries';
 import { CLIENT_SECTIONS } from './sections';
 import { TeamPanel } from './TeamPanel';
+import { EvidencePanel } from '@/features/evidence/EvidencePanel';
 
 /** Client profile (design system 6.2): operator details, installations, importers, team. */
 export function ClientPage() {
@@ -103,6 +104,7 @@ export function ClientPage() {
         <ImportersPanel clientId={clientId} importers={importers} canWrite={canWrite} />
         <TeamPanel clientId={clientId} installations={installations} canManage={can(me.user.role, 'assignments.manage')} currentUserId={me.user.id} />
         <OverridesPanel clientId={clientId} />
+        <EvidencePanel clientId={clientId} recordType="client" recordId={clientId} />
       </div>
 
       {deleting && (

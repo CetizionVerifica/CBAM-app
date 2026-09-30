@@ -11,7 +11,7 @@ import { ErrorState } from './States';
 export interface FieldDef {
   name: string;
   label: string;
-  kind?: 'text' | 'email' | 'tel' | 'country' | 'coordinate';
+  kind?: 'text' | 'email' | 'tel' | 'country' | 'coordinate' | 'date' | 'textarea';
   required?: boolean;
   hint?: string;
   /** Spans both columns of the two-column form. */
@@ -147,6 +147,8 @@ export function RecordForm(props: Props) {
                         </option>
                       ))}
                     </select>
+                  ) : f.kind === 'textarea' ? (
+                    <textarea {...reg} {...common} rows={4} className={cn(common.className, 'h-auto py-2')} />
                   ) : f.unit ? (
                     <div className="flex">
                       <input {...reg} {...common} className={cn(common.className, 'rounded-r-none')} type="text" inputMode="decimal" />
@@ -158,7 +160,7 @@ export function RecordForm(props: Props) {
                     <input
                       {...reg}
                       {...common}
-                      type={f.kind === 'email' ? 'email' : f.kind === 'tel' ? 'tel' : 'text'}
+                      type={f.kind === 'email' ? 'email' : f.kind === 'tel' ? 'tel' : f.kind === 'date' ? 'date' : 'text'}
                       inputMode={f.kind === 'coordinate' ? 'decimal' : undefined}
                     />
                   )}

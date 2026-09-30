@@ -1,5 +1,5 @@
 import { type Permission, type UserRole, can } from '@cbam/shared';
-import { BookOpen, Briefcase, type LucideIcon, Users } from 'lucide-react';
+import { BookOpen, Briefcase, FileText, History, type LucideIcon, Users } from 'lucide-react';
 
 export interface NavItem {
   label: string;
@@ -15,7 +15,11 @@ export interface NavItem {
  */
 export const NAV_GROUPS: NavItem[][] = [
   [{ label: 'Portfolio', to: '/', icon: Briefcase }],
-  // Evidence, Audit trail (M13) — added as the module lands.
+  // M13: evidence library and audit trail (design system 4).
+  [
+    { label: 'Evidence', to: '/evidence', icon: FileText, permission: 'evidence.read' },
+    { label: 'Audit trail', to: '/audit', icon: History, permission: 'audit.read' },
+  ],
   [
     // M4: every role reads the library (decision D1); only the admin sees edit actions.
     { label: 'Library', to: '/library', icon: BookOpen },

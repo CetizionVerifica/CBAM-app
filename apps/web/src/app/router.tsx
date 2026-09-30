@@ -9,6 +9,8 @@ import { InstallationPage, NewInstallationPage } from '@/features/registry/Insta
 import { NewClientPage } from '@/features/registry/NewClientPage';
 import { LibraryPage } from '@/features/library/LibraryPage';
 import { PeriodPage } from '@/features/periods/PeriodPage';
+import { EvidenceLibraryPage } from '@/features/evidence/EvidenceLibraryPage';
+import { AuditTrailPage } from '@/features/audit/AuditTrailPage';
 import { UsersPage } from '@/features/settings/UsersPage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
@@ -31,6 +33,8 @@ export const router = createBrowserRouter([
           { path: '/clients/:clientId/installations/new', element: <NewInstallationPage /> },
           { path: '/installations/:installationId', element: <InstallationPage /> },
           { path: '/periods/:periodId', element: <PeriodPage /> },
+          { path: '/evidence', element: <EvidenceLibraryPage /> },
+          { path: '/audit', element: <AuditTrailPage /> },
           { path: '/library', element: <LibraryPage /> },
           { path: '/settings/users', element: <UsersPage /> },
           { path: '*', element: <NotFoundPage /> },

@@ -145,6 +145,41 @@ export interface EuImporter {
   updated_by: Generated<string>;
 }
 
+export interface EvidenceDocument {
+  bytes: Int8;
+  client_id: string;
+  content_type: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  deleted_at: Timestamp | null;
+  doc_type: string;
+  document_date: string | null;
+  file_name: string;
+  id: Generated<string>;
+  installation_id: string | null;
+  sha256: string;
+  storage_key: string;
+  tenant_id: string;
+  title: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface EvidenceLink {
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  evidence_id: string;
+  id: Generated<string>;
+  installation_id: string | null;
+  period_version_id: string | null;
+  record_id: string;
+  record_table: string;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
 export interface GoodsCategory {
   code: string;
   created_at: Generated<Timestamp>;
@@ -402,6 +437,37 @@ export interface UserInstallationAssignment {
   user_id: string;
 }
 
+export interface Verification {
+  accreditation_body: string | null;
+  accreditation_member_state: string | null;
+  accreditation_reg_no: string | null;
+  client_approved_at: Timestamp | null;
+  client_approved_by: string | null;
+  client_id: string;
+  consultant_approved_at: Timestamp | null;
+  consultant_approved_by: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  findings: Generated<string[]>;
+  id: Generated<string>;
+  installation_id: string;
+  opinion: string | null;
+  period_version_id: string;
+  rep_email: string | null;
+  rep_fax: string | null;
+  rep_name: string | null;
+  rep_phone: string | null;
+  site_visit_date: string | null;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  verifier_city: string | null;
+  verifier_country_code: string | null;
+  verifier_name: string | null;
+  verifier_postcode: string | null;
+  verifier_street: string | null;
+}
+
 export interface DB {
   app_user: AppUser;
   "audit.audit_log": AuditAuditLog;
@@ -409,6 +475,8 @@ export interface DB {
   client_factor_override: ClientFactorOverride;
   cn_code: CnCode;
   eu_importer: EuImporter;
+  evidence_document: EvidenceDocument;
+  evidence_link: EvidenceLink;
   goods_category: GoodsCategory;
   installation: Installation;
   invitation: Invitation;
@@ -426,4 +494,5 @@ export interface DB {
   tenant: Tenant;
   user_client_assignment: UserClientAssignment;
   user_installation_assignment: UserInstallationAssignment;
+  verification: Verification;
 }

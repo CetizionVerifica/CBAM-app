@@ -33,7 +33,30 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/** Uploads a file as the raw request body, with metadata in the query string (M13). */
+async function upload<T>(path: string, file: Blob, query: Record<string, string | undefined>): Promise<T> {
+  const qs = new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => !!e[1])).toString();
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}?${qs}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  } catch {
+    throw new ApiError(0, 'network', "Couldn't reach the server. Check your connection and try again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = data?.error ?? {};
+    throw new ApiError(res.status, e.code ?? 'unknown', e.message ?? 'Something went wrong on the server. Try again.', e.issues, e.details);
+  }
+  return data as T;
+}
+
 export const api = {
+  upload,
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),

@@ -38,7 +38,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | M10 | Calculation engine | 2 Calculation core | Missing | — | — | — |
 | M11 | Validation and review | 3 Review and outputs | Missing | — | — | — |
 | M12 | Report generator | 3 Review and outputs | Missing (template file only) | — | — | — |
-| M13 | Evidence and audit | 1 Foundation | Missing | — | — | — |
+| M13 | Evidence and audit | 1 Foundation | **Built** (malware scan not configured, D15); review: Ready with conditions → F1–F5, F7 fixed (see `M13.md`) | see below | see below | see below |
 
 ## M1 — as built
 
@@ -69,6 +69,16 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | Tables | `reporting_period`, `period_version`, `period_status_change`; functions `app.assert_period_writable`, `app.register_period_table` (the lock every later period table attaches to) (migration `20260929000005_m03_periods.sql`) |
 | Screens | Reporting periods panel on the installation profile, Period overview (status, versions, history), open/clone/edit-dates and status dialogs |
 | Review | `docs/reviews/M03.md` (Ready; re-review: F1, F2, F4, F6 fixed) |
+
+## M13 — as built
+
+| Kind | Items |
+|---|---|
+| Files | `apps/api/src/modules/m13-evidence/` (`evidence.router.ts`, `filecheck.ts`, `records.ts`, `verification.router.ts`, `audit.router.ts`, `copiers.ts`), `packages/shared/src/evidence.ts`, `apps/web/src/features/evidence/`, `apps/web/src/features/audit/AuditTrailPage.tsx`, `apps/web/src/features/periods/VerificationSection.tsx` |
+| Routes | `POST/GET /api/v1/clients/:id/evidence`, `GET/PATCH/DELETE /evidence/:id`, `GET /evidence/:id/download`, `POST /evidence/:id/links`, `DELETE /evidence/:id/links/:linkId`, `GET /records/:type/:id/evidence`, `GET/PUT /period-versions/:id/verification`, `POST /period-versions/:id/verification/approvals`, `GET /audit`, `GET /audit.csv` |
+| Tables | `evidence_document`, `evidence_link`, `verification`, `app.evidence_linkable`; audit trail read policy widened (migration `20260929000006_m13_evidence.sql`) |
+| Screens | Evidence library (filters, detail pane), evidence panel on client, installation and period pages, verification section on the period page, audit trail (filters, CSV export) |
+| Review | `docs/reviews/M13.md` (independent; F1, F2 High and F3–F5, F7 Medium fixed; F6 open for the product owner) |
 
 ## M4 — as built
 

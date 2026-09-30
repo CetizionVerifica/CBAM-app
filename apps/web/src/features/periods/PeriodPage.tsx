@@ -23,7 +23,9 @@ import { ApiError, api } from '@/lib/api';
 import { formatDate, formatMoment } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { useMe } from '@/lib/session';
+import { EvidencePanel } from '@/features/evidence/EvidencePanel';
 import { PeriodFormDialog, TransitionDialog, needsConfirmation } from './PeriodDialogs';
+import { VerificationSection } from './VerificationSection';
 import { periodKeys, usePeriod } from './queries';
 
 const TOAST: Record<PeriodAction, string> = {
@@ -223,6 +225,22 @@ export function PeriodPage() {
             </div>
           </section>
         )}
+
+        <section className="mb-8">
+          <h2 className="mb-3 text-h2 font-semibold text-ink">Verification</h2>
+          <VerificationSection key={version.id} versionId={version.id} locked={locked} />
+        </section>
+
+        <div className="mb-8">
+          <EvidencePanel
+            key={version.id}
+            clientId={p.clientId}
+            installationId={p.installationId}
+            recordType="period_version"
+            recordId={version.id}
+            locked={locked}
+          />
+        </div>
 
         <section>
           <h2 className="mb-3 text-h2 font-semibold text-ink">History</h2>

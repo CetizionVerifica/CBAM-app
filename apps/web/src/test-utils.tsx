@@ -13,7 +13,9 @@ export function mockApi(routes: Record<string, Handler | { status: number; body?
   vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     const path = input.replace('/api/v1', '');
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const raw = init?.body;
+    // JSON bodies are parsed; file uploads (raw bodies) are kept as they are.
+    calls.push({ method, path, body: typeof raw === 'string' ? JSON.parse(raw) : raw });
     const route = routes[`${method} ${path}`];
     const r = typeof route === 'function' ? await route(input, init) : (route ?? { status: 404, body: { error: { code: 'not_found', message: 'Not found' } } });
     return new Response(r.status === 204 ? null : JSON.stringify(r.body ?? {}), { status: r.status });
