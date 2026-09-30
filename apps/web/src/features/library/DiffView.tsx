@@ -9,6 +9,7 @@ const DATASET_LABELS: Record<DiffDataset, string> = {
   routes: 'Production routes',
   precursors: 'Relevant precursors',
   qualifying_parameters: 'Qualifying parameters',
+  settings: 'Settings',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -27,6 +28,10 @@ const FIELD_LABELS: Record<string, string> = {
   name: 'Name',
   indirectRelevantDefinitive: 'Indirect emissions count (definitive)',
   indirectRelevantTransitional: 'Indirect emissions count (transitional)',
+  required: 'Required',
+  valueKind: 'Kind of value',
+  dimension: 'Dimension',
+  choices: 'Choices',
 };
 
 const MAX_ROWS = 50;

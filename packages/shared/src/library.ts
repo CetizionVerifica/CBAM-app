@@ -195,6 +195,73 @@ export const RelevantPrecursorsRequest = z.object({
     .max(50),
 });
 
+// ---------------------------------------------------------------------------
+// Qualifying parameters and settings (M5-R4, decisions D18 and D19)
+// ---------------------------------------------------------------------------
+
+export const QUALIFYING_VALUE_KINDS = ['number', 'text', 'choice'] as const;
+export const QualifyingValueKind = z.enum(QUALIFYING_VALUE_KINDS);
+export type QualifyingValueKind = z.infer<typeof QualifyingValueKind>;
+
+/** Dimensions a numeric qualifying parameter can have: % values and t per t ratios. */
+export const QUALIFYING_DIMENSIONS = ['fraction', 'mass_ratio'] as const satisfies readonly Dimension[];
+export type QualifyingDimension = (typeof QUALIFYING_DIMENSIONS)[number];
+
+export interface QualifyingParameterDef {
+  /** Column in the template's Summary_Products for this category (1–8). */
+  position: number;
+  name: string;
+  /** A process cannot be marked complete while a required value is missing (M5 AT3). */
+  required: boolean;
+  valueKind: QualifyingValueKind;
+  dimension: QualifyingDimension | null;
+  choices: string[] | null;
+}
+
+export const QualifyingParameterInput = z
+  .object({
+    position: z.number().int().min(1).max(8),
+    name: z.string().trim().min(1, 'Enter a name.').max(200, 'Use at most 200 characters.'),
+    required: z.boolean(),
+    valueKind: QualifyingValueKind,
+    dimension: z.enum(QUALIFYING_DIMENSIONS).nullable().default(null),
+    choices: z.array(z.string().trim().min(1).max(200)).max(20).nullable().default(null),
+  })
+  .superRefine((v, ctx) => {
+    if ((v.valueKind === 'number') !== (v.dimension !== null)) {
+      ctx.addIssue({ code: 'custom', path: ['dimension'], message: 'A number needs a dimension; text and choices have none.' });
+    }
+    if (v.valueKind === 'choice' && (!v.choices || v.choices.length < 2 || new Set(v.choices).size !== v.choices.length)) {
+      ctx.addIssue({ code: 'custom', path: ['choices'], message: 'List at least two different choices.' });
+    }
+    if (v.valueKind !== 'choice' && v.choices !== null) {
+      ctx.addIssue({ code: 'custom', path: ['choices'], message: 'Only a choice has a list of values.' });
+    }
+  });
+export type QualifyingParameterInput = z.infer<typeof QualifyingParameterInput>;
+
+export const QualifyingParametersRequest = z.object({
+  parameters: z
+    .array(QualifyingParameterInput)
+    .max(8)
+    .refine((ps) => new Set(ps.map((p) => p.position)).size === ps.length, 'Each position can be used once.'),
+});
+
+/** Largest balance tolerance the library accepts; same bound as the database check. */
+export const BALANCE_TOLERANCE_MAX = '0.2';
+
+export interface LibrarySettings {
+  /** Fraction of the activity level the production balance may be off by (M5-R3). */
+  productionBalanceTolerance: string;
+}
+
+export const LibrarySettingsPatch = z.object({
+  productionBalanceTolerance: DecimalString.refine(
+    (v) => !new Decimal(v).isNegative() && new Decimal(v).lte(BALANCE_TOLERANCE_MAX),
+    'Enter a fraction between 0 and 0.2 (20 %).',
+  ),
+});
+
 export const IMPORT_DATASETS = ['factors', 'cn_codes'] as const;
 export const ImportDataset = z.enum(IMPORT_DATASETS);
 export type ImportDataset = z.infer<typeof ImportDataset>;
@@ -309,7 +376,7 @@ export interface GoodsCategoryEntry {
   routeRelevant: boolean;
   routes: { code: string; name: string }[];
   precursors: { routeCode: string | null; precursorCode: string }[];
-  qualifyingParameters: { position: number; name: string }[];
+  qualifyingParameters: QualifyingParameterDef[];
 }
 
 export interface TemplateVersionEntry {
@@ -335,7 +402,7 @@ export interface DatasetDiff {
   removed: DiffRow[];
 }
 
-export const DIFF_DATASETS = ['factors', 'cn_codes', 'goods_categories', 'routes', 'precursors', 'qualifying_parameters'] as const;
+export const DIFF_DATASETS = ['factors', 'cn_codes', 'goods_categories', 'routes', 'precursors', 'qualifying_parameters', 'settings'] as const;
 export type DiffDataset = (typeof DIFF_DATASETS)[number];
 export type LibraryDiff = Partial<Record<DiffDataset, DatasetDiff>>;
 

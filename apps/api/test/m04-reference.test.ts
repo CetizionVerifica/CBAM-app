@@ -413,6 +413,47 @@ describe('M4-R5 who may publish, AT3', () => {
   });
 });
 
+describe('M5 additions: qualifying parameter definitions and settings (D18, D19)', () => {
+  it('a new draft copies the definitions and settings; the admin edits them; the diff shows it', async () => {
+    const draft = await newDraft();
+    const goods = (await admin.a.get(`/api/v1/library/versions/${draft.id}/goods`)).body.goods as { id: string; code: string; qualifyingParameters: object[] }[];
+    const urea = goods.find((g) => g.code === 'urea')!;
+    expect(urea.qualifyingParameters).toHaveLength(2);
+    expect((await admin.a.get(`/api/v1/library/versions/${draft.id}/settings`)).body.settings).toEqual({ productionBalanceTolerance: '0.005' });
+
+    const put = await admin.a.put(`/api/v1/library/goods-categories/${urea.id}/qualifying-parameters`, {
+      parameters: [{ position: 3, name: '% N contained', required: false, valueKind: 'number', dimension: 'fraction' }],
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(204);
+    const oneChoice = await admin.a.put(`/api/v1/library/goods-categories/${urea.id}/qualifying-parameters`, {
+      parameters: [{ position: 3, name: 'Form', required: true, valueKind: 'choice', choices: ['Prills'] }],
+    });
+    expect(oneChoice.status).toBe(400);
+    expect((await admin.a.patch(`/api/v1/library/versions/${draft.id}/settings`, { productionBalanceTolerance: '0.3' })).status).toBe(400);
+    const tol = await admin.a.patch(`/api/v1/library/versions/${draft.id}/settings`, { productionBalanceTolerance: '0.01' });
+    expect(tol.body.settings).toEqual({ productionBalanceTolerance: '0.01' });
+
+    const diff = (await admin.a.get(`/api/v1/library/versions/${draft.id}/diff`)).body.diff;
+    expect(diff.settings.changed).toMatchObject([{ key: 'production_balance_tolerance', before: { value: '0.005' }, after: { value: '0.01' } }]);
+    expect(diff.qualifying_parameters.removed.map((r: { key: string }) => r.key)).toEqual(['urea|2']);
+    expect(diff.qualifying_parameters.changed.map((r: { key: string; fields: string[] }) => [r.key, r.fields])).toEqual([['urea|3', ['required']]]);
+  });
+
+  it('consultants cannot change them, and a published version stays frozen', async () => {
+    const draft = await newDraft();
+    const published = await current();
+    const goods = (await admin.a.get(`/api/v1/library/versions/${draft.id}/goods`)).body.goods as { id: string; code: string }[];
+    const urea = goods.find((g) => g.code === 'urea')!;
+    expect((await consultant.a.patch(`/api/v1/library/versions/${draft.id}/settings`, { productionBalanceTolerance: '0.01' })).status).toBe(403);
+    expect((await consultant.a.put(`/api/v1/library/goods-categories/${urea.id}/qualifying-parameters`, { parameters: [] })).status).toBe(403);
+    expect((await admin.a.patch(`/api/v1/library/versions/${published.id}/settings`, { productionBalanceTolerance: '0.01' })).status).toBe(409);
+    const ctx = { tenantId: admin.tenantId, userId: admin.adminId, userRole: 'platform_admin' as const, requestId: randomUUID() };
+    await expect(
+      withContext(t.db, ctx, (tx) => tx.updateTable('library_setting').set({ value: '0.02' }).where('library_version_id', '=', published.id).execute()),
+    ).rejects.toMatchObject({ code: '55000' });
+  });
+});
+
 describe('M4-R5 client-specific overrides', () => {
   let clientId: string;
   beforeAll(async () => {

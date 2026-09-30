@@ -7,18 +7,19 @@ import { type Dimension, type UnitId, UNITS, baseUnit, isUnitId, toBase, unitsFo
  * A numeric input as entered (G5, G7): value, unit, provenance, data source, and the
  * library default it came from when provenance is 'default'.
  */
-export function quantityInput(dimension: Dimension) {
-  const allowed = unitsFor(dimension);
+export function quantityInput(dimension: Dimension | readonly Dimension[]) {
+  const dims: readonly Dimension[] = typeof dimension === 'string' ? [dimension] : dimension;
+  const allowed = dims.flatMap((d) => unitsFor(d));
   return z
     .object({
       value: DecimalString,
       unit: z
         .string()
-        .refine((u): u is UnitId => isUnitId(u) && UNITS[u].dimension === dimension, {
+        .refine((u): u is UnitId => isUnitId(u) && dims.includes(UNITS[u].dimension), {
           message: `Unit must be one of: ${allowed.join(', ')}.`,
         }),
       provenance: Provenance,
-      source: z.string().trim().min(1, 'Enter the data source.'),
+      source: z.string().trim().min(1, 'Enter the data source.').max(500, 'Use at most 500 characters.'),
       defaultRef: z.uuid().optional(),
     })
     .refine((q) => q.provenance !== 'default' || q.defaultRef !== undefined, {

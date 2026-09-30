@@ -1,4 +1,11 @@
-import type { GoodsCategoryEntry, LibraryVersionSummary } from '@cbam/shared';
+import {
+  Decimal,
+  type GoodsCategoryEntry,
+  LibrarySettingsPatch,
+  type LibraryVersionSummary,
+  type QualifyingParameterDef,
+  QualifyingParametersRequest,
+} from '@cbam/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/Button';
@@ -7,7 +14,8 @@ import { Field } from '@/components/Field';
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/States';
 import { useToast } from '@/components/Toast';
 import { ApiError, api } from '@/lib/api';
-import { libraryKeys, useCnCodes, useGoods, useTemplates } from './queries';
+import { formatExact } from '@/lib/format';
+import { libraryKeys, useCnCodes, useGoods, useLibrarySettings, useTemplates } from './queries';
 
 const th = 'h-8 border-b border-rule px-3 font-semibold whitespace-nowrap';
 
@@ -102,6 +110,7 @@ export function GoodsTab({ version, editable }: { version: LibraryVersionSummary
   const goods = useGoods(version.id);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<GoodsCategoryEntry | null>(null);
+  const [editingParams, setEditingParams] = useState<GoodsCategoryEntry | null>(null);
 
   if (goods.isPending) return <SkeletonRows rows={8} />;
   if (goods.isError) return <ErrorState message={goods.error.message} />;
@@ -136,6 +145,7 @@ export function GoodsTab({ version, editable }: { version: LibraryVersionSummary
   return (
     <>
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
+      <ToleranceSetting version={version} editable={editable} />
       <div className="overflow-x-auto rounded-panel border border-rule bg-surface">
         <table className="w-full text-left font-condensed text-small">
           <thead className="bg-surface-sunken text-ink">
@@ -169,12 +179,40 @@ export function GoodsTab({ version, editable }: { version: LibraryVersionSummary
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-ink">{g.qualifyingParameters.map((q) => q.name).join('; ') || '—'}</td>
+                <td className="px-3 py-2 text-ink">
+                  {g.qualifyingParameters.length === 0 ? (
+                    '—'
+                  ) : (
+                    <ul>
+                      {g.qualifyingParameters.map((q) => (
+                        <li key={q.position}>
+                          {q.name} <span className="text-ink-muted">({describeParam(q)})</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {editable && (
+                    <div>
+                      <Button variant="quiet" className="h-7 px-0" onClick={() => setEditingParams(g)}>Edit qualifying parameters</Button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {editingParams && (
+        <QualifyingParametersDialog
+          category={editingParams}
+          onClose={() => setEditingParams(null)}
+          onSaved={async () => {
+            await refresh();
+            toast('Qualifying parameters saved');
+            setEditingParams(null);
+          }}
+        />
+      )}
       {editing && (
         <PrecursorsDialog
           category={editing}
@@ -238,6 +276,164 @@ function PrecursorsDialog({ category, all, onClose, onSaved }: { category: Goods
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" disabled={busy} onClick={save}>Save precursors</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+const KIND_LABEL = { number: 'number', text: 'text', choice: 'choice' } as const;
+const DIMENSION_LABEL = { fraction: '%', mass_ratio: 't/t' } as const;
+
+/** "required, number in %" — what M5 asks for (M5-R4, D18). */
+const describeParam = (q: QualifyingParameterDef) =>
+  `${q.required ? 'required' : 'optional'}, ${KIND_LABEL[q.valueKind]}${q.dimension ? ` in ${DIMENSION_LABEL[q.dimension]}` : ''}${q.choices ? `: ${q.choices.join(', ')}` : ''}`;
+
+const percentOf = (fraction: string) => formatExact(new Decimal(fraction).times(100).toString());
+
+/** Production balance tolerance of a version (M5-R3, D19), shown and entered as % of the activity level. */
+function ToleranceSetting({ version, editable }: { version: LibraryVersionSummary; editable: boolean }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const settings = useLibrarySettings(version.id);
+  const [value, setValue] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (settings.isPending) return <div className="mb-3"><SkeletonRows rows={1} /></div>;
+  if (settings.isError) return <div className="mb-3"><ErrorState message={settings.error.message} /></div>;
+  const save = async () => {
+    setError(null);
+    const fraction = /^\d+(\.\d+)?$/.test(value ?? '') ? new Decimal(value!).div(100).toString() : 'x';
+    const parsed = LibrarySettingsPatch.safeParse({ productionBalanceTolerance: fraction });
+    if (!parsed.success) return setError('Enter a percentage between 0 and 20 %.');
+    try {
+      await api.patch(`/library/versions/${version.id}/settings`, parsed.data);
+      await Promise.all([qc.invalidateQueries({ queryKey: libraryKeys.settings(version.id) }), qc.invalidateQueries({ queryKey: libraryKeys.diff(version.id) })]);
+      setValue(null);
+      toast('Library settings saved');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
+    }
+  };
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-3 text-body text-ink">
+      {value === null ? (
+        <p>
+          Production balance tolerance:{' '}
+          <span className="tabular-nums font-semibold">{percentOf(settings.data.productionBalanceTolerance)}</span> <span className="text-ink-muted">% of the activity level</span>
+          {editable && (
+            <Button variant="quiet" className="ml-2 h-7" onClick={() => setValue(percentOf(settings.data.productionBalanceTolerance))}>Edit tolerance</Button>
+          )}
+        </p>
+      ) : (
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <div className="w-48">
+            <Field label="Production balance tolerance (%)" inputMode="decimal" className="text-right tabular-nums" value={value} error={error ?? undefined} onChange={(e) => setValue(e.target.value)} />
+          </div>
+          <Button onClick={() => setValue(null)}>Cancel</Button>
+          <Button type="submit" variant="primary">Save tolerance</Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+type ParamRow = { position: string; name: string; required: boolean; valueKind: QualifyingParameterDef['valueKind']; dimension: string; choices: string };
+
+/** Qualifying parameters of a category in a draft (D18): position, name, required, kind. */
+function QualifyingParametersDialog({ category, onClose, onSaved }: { category: GoodsCategoryEntry; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [rows, setRows] = useState<ParamRow[]>(() =>
+    category.qualifyingParameters.map((q) => ({
+      position: String(q.position),
+      name: q.name,
+      required: q.required,
+      valueKind: q.valueKind,
+      dimension: q.dimension ?? 'fraction',
+      choices: q.choices?.join('; ') ?? '',
+    })),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (i: number, patch: Partial<ParamRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const save = async () => {
+    const body = {
+      parameters: rows.map((r) => ({
+        position: Number(r.position),
+        name: r.name,
+        required: r.required,
+        valueKind: r.valueKind,
+        dimension: r.valueKind === 'number' ? r.dimension : null,
+        choices: r.valueKind === 'choice' ? r.choices.split(';').map((c) => c.trim()).filter(Boolean) : null,
+      })),
+    };
+    const parsed = QualifyingParametersRequest.safeParse(body);
+    if (!parsed.success) {
+      const i = parsed.error.issues[0]!;
+      return setError(`${typeof i.path[1] === 'number' ? `Row ${i.path[1] + 1}: ` : ''}${i.message}`);
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.put(`/library/goods-categories/${category.id}/qualifying-parameters`, parsed.data);
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? (e.issues[0]?.message ?? e.message) : 'Something went wrong. Try again.');
+      setBusy(false);
+    }
+  };
+  const input = 'h-9 rounded-input border border-rule-strong bg-surface px-2 text-body text-ink';
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Qualifying parameters — ${category.name}`} description="Position is the column in the template's Summary_Products for this category. Required ones must be filled before a process is complete.">
+      <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto">
+        {rows.map((r, i) => (
+          <fieldset key={i} className="flex flex-col gap-2 border-b border-rule pb-3">
+            <legend className="sr-only">Parameter {i + 1}</legend>
+            <div className="flex gap-2">
+              <input aria-label="Position" inputMode="numeric" className={`${input} w-14 text-right tabular-nums`} value={r.position} onChange={(e) => set(i, { position: e.target.value })} />
+              <input aria-label="Name" className={`${input} flex-1`} value={r.name} onChange={(e) => set(i, { name: e.target.value })} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-body text-ink">
+                <input type="checkbox" className="size-4 accent-[var(--action)]" checked={r.required} onChange={(e) => set(i, { required: e.target.checked })} />
+                Required
+              </label>
+              <select aria-label="Kind of value" className={input} value={r.valueKind} onChange={(e) => set(i, { valueKind: e.target.value as ParamRow['valueKind'] })}>
+                <option value="number">Number</option>
+                <option value="text">Text</option>
+                <option value="choice">Choice</option>
+              </select>
+              {r.valueKind === 'number' && (
+                <select aria-label="Dimension" className={input} value={r.dimension} onChange={(e) => set(i, { dimension: e.target.value })}>
+                  <option value="fraction">% or fraction</option>
+                  <option value="mass_ratio">t per t</option>
+                </select>
+              )}
+              {r.valueKind === 'choice' && (
+                <input aria-label="Choices, separated by semicolons" placeholder="Choice 1; Choice 2" className={`${input} flex-1`} value={r.choices} onChange={(e) => set(i, { choices: e.target.value })} />
+              )}
+              <Button variant="destructive" className="h-7" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</Button>
+            </div>
+          </fieldset>
+        ))}
+        {rows.length < 8 && (
+          <div>
+            <Button
+              variant="quiet"
+              onClick={() => setRows([...rows, { position: String(Math.max(0, ...rows.map((r) => Number(r.position) || 0)) + 1), name: '', required: true, valueKind: 'number', dimension: 'fraction', choices: '' }])}
+            >
+              Add parameter
+            </Button>
+          </div>
+        )}
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={busy} onClick={save}>Save qualifying parameters</Button>
         </div>
       </div>
     </Dialog>

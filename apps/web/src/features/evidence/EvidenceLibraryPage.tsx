@@ -32,6 +32,8 @@ const RECORD_LABELS: Record<EvidenceRecordType, string> = {
   client_factor_override: 'Factor override',
   period_version: 'Reporting period',
   verification: 'Verification',
+  production_process: 'Production process',
+  process_good: 'Good',
 };
 
 /** Evidence library (design system 6.11): files of one client, filters, and a detail pane. */

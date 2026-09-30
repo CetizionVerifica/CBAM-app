@@ -10,6 +10,7 @@ import { authRouter, usersRouter } from './modules/m01-access';
 import { registryRouter } from './modules/m02-registry/registry.router';
 import { type PeriodHooks, emptyPeriodHooks, periodsRouter } from './modules/m03-periods';
 import { libraryRouter, overridesRouter } from './modules/m04-reference';
+import { type ProcessDependents, copyProcessData, copyProcessSetup, processesRouter } from './modules/m05-processes';
 import { auditRouter, copyPeriodEvidence, evidenceRouter, verificationRouter } from './modules/m13-evidence';
 import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
@@ -26,9 +27,11 @@ export interface AppDeps {
   config: Config;
   /** What modules plug into the period life cycle (M3-R5, R6, R7). Tests may replace it. */
   periodHooks?: PeriodHooks;
+  /** Records of M6–M9 that hang off a process (M5-R5, R6). Tests may add a stand-in. */
+  processDependents?: ProcessDependents[];
 }
 
-export function createApp({ db, logger, mailer, files, config, periodHooks }: AppDeps) {
+export function createApp({ db, logger, mailer, files, config, periodHooks, processDependents = [] }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.TRUST_PROXY);
@@ -65,10 +68,15 @@ export function createApp({ db, logger, mailer, files, config, periodHooks }: Ap
   api.use('/auth', authRouter(access));
   api.use('/users', usersRouter(access));
   api.use('/', registryRouter({ db }));
-  const hooks = periodHooks ?? { ...emptyPeriodHooks(), versionCopiers: [copyPeriodEvidence] };
+  const hooks = periodHooks ?? {
+    ...emptyPeriodHooks(),
+    setupCopiers: [copyProcessSetup],
+    versionCopiers: [copyPeriodEvidence, copyProcessData],
+  };
   api.use('/', periodsRouter({ db, hooks }));
   api.use('/', libraryRouter({ db }));
   api.use('/', overridesRouter({ db }));
+  api.use('/', processesRouter({ db, dependents: processDependents }));
   api.use('/', evidenceRouter({ db, files }));
   api.use('/', verificationRouter({ db }));
   api.use('/', auditRouter({ db }));

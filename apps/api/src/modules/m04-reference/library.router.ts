@@ -10,6 +10,8 @@ import {
   FactorKind,
   FactorPatch,
   GoodsCategoryPatch,
+  LibrarySettingsPatch,
+  QualifyingParametersRequest,
   type ImportPreview,
   type ImportRowError,
   ImportRequest,
@@ -37,6 +39,7 @@ import {
   loadDraft,
   loadFactors,
   loadGoods,
+  loadSettings,
   loadVersion,
   notFound,
 } from './data';
@@ -355,6 +358,65 @@ export function libraryRouter({ db }: { db: Db }): Router {
       }
     });
     res.status(204).end();
+  });
+
+  // D18: which qualifying parameters a category has, whether each is required (M5-R4), and
+  // what kind of value it takes. Replaces the category's list in a draft.
+  router.put('/library/goods-categories/:id/qualifying-parameters', ...write, async (req, res) => {
+    const id = idParam(req.params.id, 'goods category');
+    const { parameters } = QualifyingParametersRequest.parse(req.body);
+    await withContext(db, contextOf(req, 'Save qualifying parameters'), async (tx) => {
+      const cat = await loadCategory(tx, id);
+      await tx
+        .deleteFrom('qualifying_parameter_def')
+        .where('library_version_id', '=', cat.library_version_id)
+        .where('goods_category_code', '=', cat.code)
+        .execute();
+      if (parameters.length) {
+        await tx
+          .insertInto('qualifying_parameter_def')
+          .values(
+            parameters.map((p) => ({
+              library_version_id: cat.library_version_id,
+              goods_category_code: cat.code,
+              position: p.position,
+              name: p.name,
+              required: p.required,
+              value_kind: p.valueKind,
+              dimension: p.dimension,
+              choices: p.choices,
+            })) as never,
+          )
+          .execute();
+      }
+    });
+    res.status(204).end();
+  });
+
+  // D19: settings of a version, such as the production balance tolerance (M5-R3).
+  router.get('/library/versions/:id/settings', async (req, res) => {
+    const id = idParam(req.params.id, 'library version');
+    const settings = await withContext(db, contextOf(req), async (tx) => {
+      await loadVersion(tx, id);
+      return loadSettings(tx, id);
+    });
+    res.json({ settings });
+  });
+
+  router.patch('/library/versions/:id/settings', ...write, async (req, res) => {
+    const id = idParam(req.params.id, 'library version');
+    const patch = LibrarySettingsPatch.parse(req.body);
+    const settings = await withContext(db, contextOf(req, 'Save library settings'), async (tx) => {
+      await loadDraft(tx, id);
+      await tx
+        .updateTable('library_setting')
+        .set({ value: patch.productionBalanceTolerance })
+        .where('library_version_id', '=', id)
+        .where('key', '=', 'production_balance_tolerance')
+        .execute();
+      return loadSettings(tx, id);
+    });
+    res.json({ settings });
   });
 
   // --- import (M4-R4, AT2) -----------------------------------------------------

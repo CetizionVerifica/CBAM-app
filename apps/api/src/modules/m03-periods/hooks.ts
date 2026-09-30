@@ -11,8 +11,9 @@ import type { Tx } from '../../platform/db';
  * - `versionCopiers` (M3-R5): every module that holds period data copies it into
  *   version n+1, so the new version starts from what was issued.
  *
- * Until those modules exist, clone copies only the period metadata, and approval has no
- * blocking rules. Both show as partial in the M3 review.
+ * A copier may return notes (plain sentences) about what it could not copy, for example set-up
+ * that uses codes the new period's library no longer has (D23); clone returns them to the user.
+ * Until M11 exists, approval has no blocking rules.
  */
 
 export interface ApprovalBlocker {
@@ -23,7 +24,7 @@ export interface ApprovalBlocker {
 }
 
 export type ApprovalGuard = (tx: Tx, periodVersionId: string) => Promise<ApprovalBlocker[]>;
-export type PeriodCopier = (tx: Tx, from: { periodVersionId: string }, to: { periodVersionId: string }) => Promise<void>;
+export type PeriodCopier = (tx: Tx, from: { periodVersionId: string }, to: { periodVersionId: string }) => Promise<void | string[]>;
 
 export interface PeriodHooks {
   approvalGuards: ApprovalGuard[];

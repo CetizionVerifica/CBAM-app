@@ -281,6 +281,17 @@ export interface LibraryImport {
   updated_by: Generated<string>;
 }
 
+export interface LibrarySetting {
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  key: string;
+  library_version_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  value: Numeric;
+}
+
 export interface LibraryVersion {
   based_on_id: string | null;
   code: string;
@@ -331,6 +342,148 @@ export interface PeriodVersion {
   version_no: number;
 }
 
+export interface ProcessGood {
+  client_id: string;
+  cn_code: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  period_version_id: string;
+  process_id: string;
+  produced_default_ref: string | null;
+  produced_provenance: string | null;
+  produced_si: Numeric | null;
+  produced_source: string | null;
+  produced_unit: string | null;
+  produced_value: Numeric | null;
+  product_name: string | null;
+  sold_eu_default_ref: string | null;
+  sold_eu_provenance: string | null;
+  sold_eu_si: Numeric | null;
+  sold_eu_source: string | null;
+  sold_eu_unit: string | null;
+  sold_eu_value: Numeric | null;
+  sold_other_default_ref: string | null;
+  sold_other_provenance: string | null;
+  sold_other_si: Numeric | null;
+  sold_other_source: string | null;
+  sold_other_unit: string | null;
+  sold_other_value: Numeric | null;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface ProcessGoodParameter {
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  good_id: string;
+  goods_category_code: string;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  period_version_id: string;
+  position: number;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  value_default_ref: string | null;
+  value_provenance: string | null;
+  value_si: Numeric | null;
+  value_source: string | null;
+  value_text: string | null;
+  value_unit: string | null;
+  value_value: Numeric | null;
+}
+
+export interface ProcessIncludedCategory {
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  period_version_id: string;
+  process_id: string;
+  route_codes: Generated<string[]>;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface ProcessInternalUse {
+  amount_default_ref: string | null;
+  amount_provenance: string | null;
+  amount_si: Numeric | null;
+  amount_source: string | null;
+  amount_unit: string | null;
+  amount_value: Numeric | null;
+  client_id: string;
+  consumer_process_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  period_version_id: string;
+  process_id: string;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface ProcessRoute {
+  amount_default_ref: string | null;
+  amount_provenance: string | null;
+  amount_si: Numeric | null;
+  amount_source: string | null;
+  amount_unit: string | null;
+  amount_value: Numeric | null;
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  period_version_id: string;
+  process_id: string;
+  route_code: string | null;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface ProductionProcess {
+  client_id: string;
+  completed_at: Timestamp | null;
+  completed_by: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  goods_category_code: string;
+  id: Generated<string>;
+  installation_id: string;
+  library_version_id: string;
+  name: string;
+  non_cbam_default_ref: string | null;
+  non_cbam_provenance: string | null;
+  non_cbam_si: Numeric | null;
+  non_cbam_source: string | null;
+  non_cbam_unit: string | null;
+  non_cbam_value: Numeric | null;
+  period_version_id: string;
+  position: number;
+  status: Generated<string>;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
 export interface ProductionRoute {
   code: string;
   created_at: Generated<Timestamp>;
@@ -345,15 +498,19 @@ export interface ProductionRoute {
 }
 
 export interface QualifyingParameterDef {
+  choices: string[] | null;
   created_at: Generated<Timestamp>;
   created_by: Generated<string>;
+  dimension: string | null;
   goods_category_code: string;
   id: Generated<string>;
   library_version_id: string;
   name: string;
   position: number;
+  required: boolean;
   updated_at: Generated<Timestamp>;
   updated_by: Generated<string>;
+  value_kind: string;
 }
 
 export interface RefCountry {
@@ -482,9 +639,16 @@ export interface DB {
   invitation: Invitation;
   library_factor: LibraryFactor;
   library_import: LibraryImport;
+  library_setting: LibrarySetting;
   library_version: LibraryVersion;
   period_status_change: PeriodStatusChange;
   period_version: PeriodVersion;
+  process_good: ProcessGood;
+  process_good_parameter: ProcessGoodParameter;
+  process_included_category: ProcessIncludedCategory;
+  process_internal_use: ProcessInternalUse;
+  process_route: ProcessRoute;
+  production_process: ProductionProcess;
   production_route: ProductionRoute;
   qualifying_parameter_def: QualifyingParameterDef;
   ref_country: RefCountry;

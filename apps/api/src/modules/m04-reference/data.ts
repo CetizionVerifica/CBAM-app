@@ -3,12 +3,16 @@ import {
   type CnCodeEntry,
   type CnCodeRow,
   Decimal,
+  DIFF_DATASETS,
   type DiffDataset,
   FACTOR_KIND_LABELS,
   type FactorKind,
   type GoodsCategoryEntry,
   type LibraryDiff,
   type LibraryFactor,
+  type LibrarySettings,
+  type QualifyingDimension,
+  type QualifyingValueKind,
   type SeeComponent,
   UNITS,
   factorKey,
@@ -189,8 +193,23 @@ export async function loadGoods(tx: Tx, versionId: string): Promise<GoodsCategor
       .map((p) => ({ routeCode: p.route_code, precursorCode: p.precursor_category_code })),
     qualifyingParameters: params
       .filter((p) => p.goods_category_code === c.code)
-      .map((p) => ({ position: p.position, name: p.name })),
+      .map((p) => ({
+        position: p.position,
+        name: p.name,
+        required: p.required,
+        valueKind: p.value_kind as QualifyingValueKind,
+        dimension: p.dimension as QualifyingDimension | null,
+        choices: p.choices,
+      })),
   }));
+}
+
+/** Versioned settings (D19). Every version has every key: seeded, then cloned into drafts. */
+export async function loadSettings(tx: Tx, versionId: string): Promise<LibrarySettings> {
+  const rows = await tx.selectFrom('library_setting').select(['key', 'value']).where('library_version_id', '=', versionId).execute();
+  const tolerance = rows.find((r) => r.key === 'production_balance_tolerance');
+  if (!tolerance) throw new AppError(500, 'internal', 'The library version has no production balance tolerance.');
+  return { productionBalanceTolerance: new Decimal(tolerance.value).toString() };
 }
 
 // --- diff records ---------------------------------------------------------------
@@ -275,8 +294,16 @@ async function recordsOf(tx: Tx, versionId: string, dataset: DiffDataset): Promi
           })),
         );
       }
+      if (dataset === 'settings') {
+        const s = await loadSettings(tx, versionId);
+        return [{ key: 'production_balance_tolerance', label: 'Production balance tolerance', fields: { value: s.productionBalanceTolerance } }];
+      }
       return goods.flatMap((g) =>
-        g.qualifyingParameters.map((q) => ({ key: `${g.code}|${q.position}`, label: `${g.name}: ${q.name}`, fields: { name: q.name } })),
+        g.qualifyingParameters.map((q) => ({
+          key: `${g.code}|${q.position}`,
+          label: `${g.name}: ${q.name}`,
+          fields: { name: q.name, required: q.required, valueKind: q.valueKind, dimension: q.dimension, choices: q.choices?.join('; ') ?? null },
+        })),
       );
     }
   }
@@ -288,7 +315,7 @@ export const diffFingerprint = (diff: LibraryDiff) => createHash('sha256').updat
 /** Every dataset that differs between two versions (publish preview, M4-R4 / design system 6.12). */
 export async function diffVersions(tx: Tx, fromId: string | null, toId: string): Promise<LibraryDiff> {
   const out: LibraryDiff = {};
-  for (const ds of ['factors', 'cn_codes', 'goods_categories', 'routes', 'precursors', 'qualifying_parameters'] as const) {
+  for (const ds of DIFF_DATASETS) {
     const before = fromId ? await recordsOf(tx, fromId, ds) : [];
     const d = diffRecords(before, await recordsOf(tx, toId, ds));
     if (!isEmptyDiff(d)) out[ds] = d;
