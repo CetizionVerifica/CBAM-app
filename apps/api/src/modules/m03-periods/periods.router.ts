@@ -314,11 +314,11 @@ export function periodsRouter({ db, hooks = emptyPeriodHooks() }: { db: Db; hook
   });
 
   // M3-R6: a new period on the same installation with the set-up of this one (never its
-  // activity data). Until M5 exists there is no set-up to copy (decision D6).
+  // activity data). The set-up copiers (M5, later M6) say what they could not copy (D23).
   router.post('/periods/:id/clone', manage, async (req, res) => {
     const id = idParam(req.params.id, 'reporting period');
     const input = PeriodInput.parse(req.body);
-    const period = await withContext(db, contextOf(req, 'Clone period'), async (tx) => {
+    const result = await withContext(db, contextOf(req, 'Clone period'), async (tx) => {
       const source = await loadPeriod(tx, id);
       const from = await tx
         .selectFrom('period_version')
@@ -329,10 +329,11 @@ export function periodsRouter({ db, hooks = emptyPeriodHooks() }: { db: Db; hook
         .executeTakeFirstOrThrow();
       const inst = await loadInstallation(tx, source.installation_id);
       const created = await insertPeriod(tx, inst, input);
-      for (const copy of hooks.setupCopiers) await copy(tx, { periodVersionId: from.id }, { periodVersionId: created.versionId });
-      return periodDetail(tx, created.periodId);
+      const notes: string[] = [];
+      for (const copy of hooks.setupCopiers) notes.push(...((await copy(tx, { periodVersionId: from.id }, { periodVersionId: created.versionId })) ?? []));
+      return { period: await periodDetail(tx, created.periodId), notes };
     });
-    res.status(201).json({ period });
+    res.status(201).json(result);
   });
 
   // --- status (M3-R3, R7) ---------------------------------------------------------

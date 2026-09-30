@@ -57,8 +57,8 @@ flowchart TD
 | Installation | Site name (local and English), address, country, UN/LOCODE, coordinates, permit, monitoring plan | Client, reporting periods |
 | Reporting period | Start and end date, justification for a non-calendar year | Installation, period versions |
 | Period version | Version number, status, lock, pinned factor-library and template versions | Reporting period, processes, reports |
-| Production process | Aggregated goods category, production route, activity level | Period, source streams, energy, precursors, goods |
-| Good | CN code (8-digit), quantity, qualifying parameters | Process, report |
+| Production process | Name, main aggregated goods category, included precursor categories and their routes, production per route (sum = activity level), quantities consumed by other processes and for non-CBAM goods (template A_InstData (a)/(b), D_Processes; phase 2 D16) | Period, source streams, energy, precursors, goods |
+| Good | CN code (8-digit) of the main category, product name, quantity produced, sold to the EU and elsewhere, qualifying parameters | Process, report |
 | Source stream | Fuel or material with activity data and factors (calculation method) | Process, emission factor library |
 | Emission source | Stack or point measured by CEMS (measurement method) | Process |
 | Energy flow | Electricity, measurable heat, waste gases, imported or exported | Process, emission factor library |
@@ -104,14 +104,17 @@ About 70 parameters in ten groups feed the SEE calculation and the template; gro
 
 | Parameter | Unit / format | Notes |
 | --- | --- | --- |
-| Aggregated goods category | List (e.g. crude steel, unwrought aluminium, clinker, ammonia) | Defines system boundary |
-| Production route | List per category (e.g. BF-BOF, EAF, primary smelting) | |
-| CN codes produced | 8-digit | One process can make several |
-| Activity level (total production) | t | Denominator of SEE |
-| Quantity per CN code | t | Share of the activity level |
+| Aggregated goods category | List (e.g. crude steel, unwrought aluminium, clinker, ammonia) | Main category of the process; defines system boundary |
+| Included goods categories | List, up to 5 | Relevant precursors made inside the same boundary ("bubble approach"), each with its routes (phase 2 D16) |
+| Production route | List per category (e.g. BF-BOF, EAF, primary smelting) | One or more per process; none when the category is not route-relevant |
+| Production per route | t (MWh for electricity) | Template D_Processes (a) |
+| Activity level (total production) | t (MWh for electricity) | Sum of production per route; denominator of SEE |
+| CN codes produced | 8-digit | Of the main category; one process can make several |
+| Quantity per CN code | t | Share of the activity level; their sum is "produced for the market" (D_Processes (b), not entered separately, D17) |
 | Quantity sold to EU vs other markets | t | For the importer summary |
-| Quantity consumed as precursor internally | t | Avoids double counting |
-| Qualifying parameters | Varies by sector | E.g. clinker content of cement, N content and form of fertilisers, alloy content of steel, scrap share of aluminium, hydrogen purity |
+| Quantity consumed as precursor internally | t | Per consuming process of the installation (D_Processes (c)), plus consumption for non-CBAM goods ((d)); avoids double counting |
+| Production balance | t | Activity level − Σ CN quantities − internal consumption − non-CBAM; within a tolerance set in the library (D19), else a critical check (M5-R3) |
+| Qualifying parameters | Varies by sector | Per CN code; which are required and what kind of value each takes is configured in the library (D18). E.g. clinker content of cement, N content and form of fertilisers, alloy content of steel, scrap share of aluminium, hydrogen purity |
 
 ### 4.4 Direct emissions: calculation-based (per source stream)
 

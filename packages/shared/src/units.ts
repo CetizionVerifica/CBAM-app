@@ -21,6 +21,8 @@ export const DIMENSIONS = {
   see: 'tCO2e/t',
   see_electricity: 'tCO2e/MWh',
   carbon_content: 'tC/t',
+  // Qualifying parameters such as t scrap per t product (M5, D18); can exceed 1.
+  mass_ratio: 't/t',
   fraction: 'fraction',
 } as const;
 export type Dimension = keyof typeof DIMENSIONS;
@@ -79,6 +81,9 @@ export const UNITS = {
   // carbon content
   'tC/t': { dimension: 'carbon_content', toBase: '1', label: 'tC/t' },
   '%C': { dimension: 'carbon_content', toBase: '0.01', label: '% C' },
+  // mass ratios
+  't/t': { dimension: 'mass_ratio', toBase: '1', label: 't/t' },
+  'kg/t': { dimension: 'mass_ratio', toBase: '0.001', label: 'kg/t' },
   // fractions
   fraction: { dimension: 'fraction', toBase: '1', label: '' },
   '%': { dimension: 'fraction', toBase: '0.01', label: '%' },

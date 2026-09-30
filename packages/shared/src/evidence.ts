@@ -51,7 +51,10 @@ export const EVIDENCE_DOC_TYPE_LABELS: Record<EvidenceDocType, string> = {
 };
 
 /** Records evidence can support now; later modules add theirs (and to app.evidence_linkable). */
-export const EVIDENCE_RECORD_TYPES = ['client', 'installation', 'eu_importer', 'client_factor_override', 'period_version', 'verification'] as const;
+export const EVIDENCE_RECORD_TYPES = [
+  'client', 'installation', 'eu_importer', 'client_factor_override', 'period_version', 'verification',
+  'production_process', 'process_good',
+] as const;
 export const EvidenceRecordType = z.enum(EVIDENCE_RECORD_TYPES);
 export type EvidenceRecordType = z.infer<typeof EvidenceRecordType>;
 
@@ -164,7 +167,11 @@ export const AUDIT_MODULES = {
   M4: [
     'public.library_version', 'public.goods_category', 'public.production_route', 'public.route_relevant_precursor',
     'public.qualifying_parameter_def', 'public.cn_code', 'public.library_factor', 'public.template_version',
-    'public.library_import', 'public.client_factor_override',
+    'public.library_import', 'public.client_factor_override', 'public.library_setting',
+  ],
+  M5: [
+    'public.production_process', 'public.process_included_category', 'public.process_route', 'public.process_good',
+    'public.process_good_parameter', 'public.process_internal_use',
   ],
   M13: ['public.evidence_document', 'public.evidence_link', 'public.verification'],
 } as const;
@@ -175,6 +182,7 @@ export const AUDIT_MODULE_LABELS: Record<AuditModule, string> = {
   M2: 'Clients and installations',
   M3: 'Reporting periods',
   M4: 'Reference library',
+  M5: 'Processes and goods',
   M13: 'Evidence and verification',
 };
 

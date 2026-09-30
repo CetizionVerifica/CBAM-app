@@ -34,6 +34,22 @@ export async function recordLabels(tx: Tx, refs: { recordType: EvidenceRecordTyp
       labels.set(key('client_factor_override', r.id), `Factor override: ${r.subject} (${r.kind.replace('_', ' ')})`);
     }
   }
+  const processes = ids('production_process');
+  if (processes.length) {
+    for (const r of await tx.selectFrom('production_process').select(['id', 'name']).where('id', 'in', processes).execute()) {
+      labels.set(key('production_process', r.id), `Process: ${r.name}`);
+    }
+  }
+  const goods = ids('process_good');
+  if (goods.length) {
+    const rows = await tx
+      .selectFrom('process_good as g')
+      .innerJoin('production_process as p', 'p.id', 'g.process_id')
+      .select(['g.id', 'g.cn_code', 'g.product_name', 'p.name'])
+      .where('g.id', 'in', goods)
+      .execute();
+    for (const r of rows) labels.set(key('process_good', r.id), `Good: ${r.cn_code}${r.product_name ? ` ${r.product_name}` : ''} (${r.name})`);
+  }
   const versions = ids('period_version');
   const verifications = ids('verification');
   if (versions.length || verifications.length) {

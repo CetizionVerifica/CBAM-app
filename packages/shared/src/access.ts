@@ -43,6 +43,12 @@ export const PERMISSIONS = {
   // M3: open, clone and re-version reporting periods, and edit their dates. Status changes
   // have their own role lists (PERIOD_TRANSITIONS in periods.ts).
   'periods.manage': ['platform_admin', 'consultant'],
+  // M5 (decision D21): processes, categories, routes and goods, and marking a process complete.
+  'processes.configure': ['platform_admin', 'consultant'],
+  // M5: production amounts, goods quantities, qualifying parameter values, internal use.
+  'processes.enterData': ['platform_admin', 'consultant', 'contributor'],
+  // M5: read processes; recipients see only approved outputs (like evidence, D15).
+  'processes.read': ['platform_admin', 'consultant', 'contributor', 'reviewer'],
   // M13: upload and link evidence; edit or delete any file (contributors: their own uploads).
   'evidence.read': ['platform_admin', 'consultant', 'contributor', 'reviewer'],
   'evidence.upload': ['platform_admin', 'consultant', 'contributor'],

@@ -10,6 +10,7 @@ import { authRouter, usersRouter } from './modules/m01-access';
 import { registryRouter } from './modules/m02-registry/registry.router';
 import { type PeriodHooks, emptyPeriodHooks, periodsRouter } from './modules/m03-periods';
 import { libraryRouter, overridesRouter } from './modules/m04-reference';
+import { copyProcessData, copyProcessSetup, processesRouter } from './modules/m05-processes';
 import { auditRouter, copyPeriodEvidence, evidenceRouter, verificationRouter } from './modules/m13-evidence';
 import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
@@ -65,10 +66,15 @@ export function createApp({ db, logger, mailer, files, config, periodHooks }: Ap
   api.use('/auth', authRouter(access));
   api.use('/users', usersRouter(access));
   api.use('/', registryRouter({ db }));
-  const hooks = periodHooks ?? { ...emptyPeriodHooks(), versionCopiers: [copyPeriodEvidence] };
+  const hooks = periodHooks ?? {
+    ...emptyPeriodHooks(),
+    setupCopiers: [copyProcessSetup],
+    versionCopiers: [copyPeriodEvidence, copyProcessData],
+  };
   api.use('/', periodsRouter({ db, hooks }));
   api.use('/', libraryRouter({ db }));
   api.use('/', overridesRouter({ db }));
+  api.use('/', processesRouter({ db }));
   api.use('/', evidenceRouter({ db, files }));
   api.use('/', verificationRouter({ db }));
   api.use('/', auditRouter({ db }));
