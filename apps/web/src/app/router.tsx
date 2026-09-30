@@ -8,6 +8,7 @@ import { ClientPage } from '@/features/registry/ClientPage';
 import { InstallationPage, NewInstallationPage } from '@/features/registry/InstallationPages';
 import { NewClientPage } from '@/features/registry/NewClientPage';
 import { LibraryPage } from '@/features/library/LibraryPage';
+import { PeriodPage } from '@/features/periods/PeriodPage';
 import { UsersPage } from '@/features/settings/UsersPage';
 import { AppShell } from './AppShell';
 import { NotFoundPage } from './NotFoundPage';
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
           { path: '/clients/:clientId', element: <ClientPage /> },
           { path: '/clients/:clientId/installations/new', element: <NewInstallationPage /> },
           { path: '/installations/:installationId', element: <InstallationPage /> },
+          { path: '/periods/:periodId', element: <PeriodPage /> },
           { path: '/library', element: <LibraryPage /> },
           { path: '/settings/users', element: <UsersPage /> },
           { path: '*', element: <NotFoundPage /> },

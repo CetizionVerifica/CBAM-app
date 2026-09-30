@@ -260,6 +260,42 @@ export interface LibraryVersion {
   updated_by: Generated<string>;
 }
 
+export interface PeriodStatusChange {
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  from_status: string | null;
+  id: Generated<string>;
+  installation_id: string;
+  period_version_id: string;
+  reason: string | null;
+  tenant_id: string;
+  to_status: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+}
+
+export interface PeriodVersion {
+  approved_at: Timestamp | null;
+  approved_by: string | null;
+  based_on_version_id: string | null;
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  id: Generated<string>;
+  installation_id: string;
+  issued_at: Timestamp | null;
+  issued_by: string | null;
+  library_version_id: string;
+  period_id: string;
+  status: Generated<string>;
+  template_version_id: string;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
+  version_no: number;
+}
+
 export interface ProductionRoute {
   code: string;
   created_at: Generated<Timestamp>;
@@ -289,6 +325,20 @@ export interface RefCountry {
   code: string;
   name: string;
   source: string;
+}
+
+export interface ReportingPeriod {
+  client_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: Generated<string>;
+  end_date: string;
+  id: Generated<string>;
+  installation_id: string;
+  justification: string | null;
+  start_date: string;
+  tenant_id: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: Generated<string>;
 }
 
 export interface RouteRelevantPrecursor {
@@ -365,9 +415,12 @@ export interface DB {
   library_factor: LibraryFactor;
   library_import: LibraryImport;
   library_version: LibraryVersion;
+  period_status_change: PeriodStatusChange;
+  period_version: PeriodVersion;
   production_route: ProductionRoute;
   qualifying_parameter_def: QualifyingParameterDef;
   ref_country: RefCountry;
+  reporting_period: ReportingPeriod;
   route_relevant_precursor: RouteRelevantPrecursor;
   template_version: TemplateVersion;
   tenant: Tenant;

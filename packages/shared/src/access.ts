@@ -40,6 +40,9 @@ export const PERMISSIONS = {
   // M4-R5: client-specific factor overrides.
   'overrides.propose': ['platform_admin', 'consultant'],
   'overrides.decide': ['platform_admin'],
+  // M3: open, clone and re-version reporting periods, and edit their dates. Status changes
+  // have their own role lists (PERIOD_TRANSITIONS in periods.ts).
+  'periods.manage': ['platform_admin', 'consultant'],
 } as const satisfies Record<string, readonly UserRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

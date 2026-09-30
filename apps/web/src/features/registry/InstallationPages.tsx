@@ -13,6 +13,7 @@ import { useToast } from '@/components/Toast';
 import { api } from '@/lib/api';
 import { useCountryName } from '@/lib/reference';
 import { useMe } from '@/lib/session';
+import { PeriodsPanel } from '@/features/periods/PeriodsPanel';
 import { keys, useClient, useInstallation } from './queries';
 import { INSTALLATION_SECTIONS } from './sections';
 
@@ -112,6 +113,7 @@ export function InstallationPage() {
             void qc.invalidateQueries({ queryKey: keys.client(clientId) });
           }}
         />
+        <PeriodsPanel installationId={installationId} />
       </div>
       {deleting && (
         <ConfirmDialog

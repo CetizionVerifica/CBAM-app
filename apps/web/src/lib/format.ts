@@ -36,3 +36,18 @@ export function formatExact(value: DecimalString, locale: string = navigator.lan
 
 /** Display label for a unit id; unknown ids are shown as given. */
 export const unitLabel = (unit: string): string => (unit in UNITS ? UNITS[unit as UnitId].label : unit);
+
+/**
+ * A business date ('YYYY-MM-DD') as "1 Jan 2026". Formatted in UTC so the day never shifts
+ * with the viewer's time zone (M3-R8, AT4).
+ */
+export function formatDate(value: string, locale: string = navigator.language): string {
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(`${value}T00:00:00Z`),
+  );
+}
+
+/** A moment (timestamptz), in the viewer's time zone: "12 Oct 2026, 14:05". */
+export function formatMoment(iso: string, locale: string = navigator.language): string {
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+}

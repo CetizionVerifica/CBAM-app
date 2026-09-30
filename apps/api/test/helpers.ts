@@ -4,7 +4,7 @@ import { pino } from 'pino';
 import request from 'supertest';
 import { expect, inject } from 'vitest';
 import type { UserRole } from '@cbam/shared';
-import { createApp } from '../src/app';
+import { type AppDeps, createApp } from '../src/app';
 import type { Config } from '../src/config';
 import { randomToken, sha256Hex } from '../src/platform/crypto';
 import { type Db, createDb } from '../src/platform/db';
@@ -33,14 +33,14 @@ export function testConfig(): Config {
   };
 }
 
-export function testApp() {
+export function testApp(extra: Pick<AppDeps, 'periodHooks'> = {}) {
   const config = testConfig();
   const db = createDb(config.APP_DATABASE_URL);
   const owner = createDb(inject('ownerUrl'));
   const su = createDb(inject('superUrl'));
   const mailer = memoryMailer();
   const files = memoryFileStore();
-  const app = createApp({ db, logger: pino({ level: 'silent' }), mailer, files, config });
+  const app = createApp({ db, logger: pino({ level: 'silent' }), mailer, files, config, ...extra });
   const close = () => Promise.all([db.destroy(), owner.destroy(), su.destroy()]);
   return { app, db, owner, su, mailer, files, config, close };
 }
@@ -56,6 +56,8 @@ export function agent(t: TestApp) {
     get: (url: string) => a.get(url),
     post: (url: string, body?: object) => a.post(url).set('Origin', WEB_ORIGIN).send(body ?? {}),
     patch: (url: string, body?: object) => a.patch(url).set('Origin', WEB_ORIGIN).send(body ?? {}),
+    put: (url: string, body?: object) => a.put(url).set('Origin', WEB_ORIGIN).send(body ?? {}),
+    delete: (url: string) => a.delete(url).set('Origin', WEB_ORIGIN),
   };
 }
 export type TestAgent = ReturnType<typeof agent>;
