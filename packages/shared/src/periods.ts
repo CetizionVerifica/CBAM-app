@@ -14,7 +14,11 @@ import { IsoDate } from './library';
 // Dates
 // ---------------------------------------------------------------------------
 
-const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const daysInMonth = (y: number, m: number) => {
+  const d = new Date(0);
+  d.setUTCFullYear(y, m, 0);
+  return d.getUTCDate();
+};
 
 /**
  * Last day of the 12-month period that starts on `start` (M3-R2). Same arithmetic as the
@@ -23,10 +27,19 @@ const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTC
  */
 export function periodEndDate(start: string): string {
   const [y, m, d] = start.split('-').map(Number) as [number, number, number];
-  const next = new Date(Date.UTC(y + 1, m - 1, Math.min(d, daysInMonth(y + 1, m))));
+  // setUTCFullYear, not Date.UTC: Date.UTC maps years 0–99 to 1900–1999 (review M3 F2).
+  const next = new Date(0);
+  next.setUTCFullYear(y + 1, m - 1, Math.min(d, daysInMonth(y + 1, m)));
   next.setUTCDate(next.getUTCDate() - 1);
   return next.toISOString().slice(0, 10);
 }
+
+/**
+ * Plausible start dates (review M3 F2): CBAM reporting began in October 2023, and a start
+ * after 2100 is a typing error. The database check `reporting_period_range` uses the same bounds.
+ */
+export const PERIOD_START_MIN = '2023-01-01';
+export const PERIOD_START_MAX = '2100-12-31';
 
 /** M3-R2: the default period is a calendar year. */
 export const isCalendarYear = (start: string): boolean => start.endsWith('-01-01');
@@ -75,6 +88,10 @@ const Justification = optionalText(2000);
 export const PeriodInput = z
   .object({ startDate: IsoDate, endDate: IsoDate, justification: Justification })
   .superRefine((v, ctx) => {
+    if (v.startDate < PERIOD_START_MIN || v.startDate > PERIOD_START_MAX) {
+      ctx.addIssue({ code: 'custom', path: ['startDate'], message: 'Choose a start date between 2023 and 2100.' });
+      return;
+    }
     const end = periodEndDate(v.startDate);
     if (v.endDate !== end) {
       ctx.addIssue({ code: 'custom', path: ['endDate'], message: `A reporting period is 12 months: it ends on ${end}.` });

@@ -97,7 +97,9 @@ export function PeriodPage() {
   const lockMessage =
     version.status === 'issued'
       ? `Version ${version.versionNo} is issued and read-only.${isLatest ? ' Create a new version to make changes.' : ''}`
-      : 'This period is approved and read-only. Return it to draft to make changes.';
+      : PERIOD_TRANSITIONS.reopen.roles.includes(me.user.role)
+        ? 'This period is approved and read-only. Return it to draft to make changes.'
+        : 'This period is approved and read-only. A consultant can return it to draft.';
 
   return (
     <>

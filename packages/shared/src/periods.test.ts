@@ -24,6 +24,22 @@ describe('M3-R2 period dates', () => {
     ).toBe(true);
   });
 
+  it('computes the end date correctly for any year (review M3 F2)', () => {
+    expect(periodEndDate('0050-01-01')).toBe('0050-12-31');
+    expect(periodEndDate('2099-03-01')).toBe('2100-02-28');
+  });
+
+  it('refuses start dates outside 2023–2100 (review M3 F2)', () => {
+    for (const startDate of ['0050-01-01', '1950-01-01', '2022-12-01', '2101-01-01']) {
+      const r = PeriodInput.safeParse({ startDate, endDate: periodEndDate(startDate), justification: 'x' });
+      expect(r.error?.issues, startDate).toEqual([
+        expect.objectContaining({ path: ['startDate'], message: 'Choose a start date between 2023 and 2100.' }),
+      ]);
+    }
+    expect(PeriodInput.safeParse({ startDate: '2023-01-01', endDate: '2023-12-31' }).success).toBe(true);
+    expect(PeriodInput.safeParse({ startDate: '2100-12-31', endDate: '2101-12-30', justification: 'x' }).success).toBe(true);
+  });
+
   it('rejects a period that is not 12 months', () => {
     const r = PeriodInput.safeParse({ startDate: '2026-01-01', endDate: '2026-06-30' });
     expect(r.error?.issues[0]).toMatchObject({ path: ['endDate'], message: 'A reporting period is 12 months: it ends on 2026-12-31.' });

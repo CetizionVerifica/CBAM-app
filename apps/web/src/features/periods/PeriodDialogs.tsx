@@ -1,4 +1,4 @@
-import { PERIOD_TRANSITIONS, type PeriodAction, PeriodInput, isCalendarYear, periodEndDate } from '@cbam/shared';
+import { PERIOD_START_MAX, PERIOD_START_MIN, PERIOD_TRANSITIONS, type PeriodAction, PeriodInput, isCalendarYear, periodEndDate } from '@cbam/shared';
 import { useId, useState } from 'react';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
@@ -72,6 +72,8 @@ export function PeriodFormDialog({
         <Field
           label="Start date"
           type="date"
+          min={PERIOD_START_MIN}
+          max={PERIOD_START_MAX}
           value={startDate}
           required
           error={errors.startDate}

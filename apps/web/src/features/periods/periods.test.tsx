@@ -142,6 +142,11 @@ describe('period overview', () => {
     expect(screen.queryByRole('button', { name: /^Clone/ })).toBeNull();
   });
 
+  it('the approved banner names who can return it to draft (review M3 F6)', async () => {
+    renderPeriod('reviewer', period({ versions: [version({ status: 'approved', approvedAt: '2026-09-29T11:00:00Z' })], datesEditable: false }));
+    expect(await screen.findByText('This period is approved and read-only. A consultant can return it to draft.')).toBeInTheDocument();
+  });
+
   it('an issued version is locked and offers a new version', async () => {
     const issued = period({
       versions: [version({ status: 'issued', approvedAt: '2026-09-29T11:00:00Z', issuedAt: '2026-09-29T12:00:00Z' })],

@@ -51,7 +51,7 @@ async function newInstallation(name = `Smelter ${randomUUID().slice(0, 6)}`) {
 async function openPeriod(installationId: string, body: object = cal(2026), who: TestAgent = consultant.a) {
   const res = await who.post(api(`/installations/${installationId}/periods`), body);
   expect(res.status, JSON.stringify(res.body)).toBe(201);
-  return res.body.period as { id: string; versions: { id: string; versionNo: number; status: string }[] };
+  return res.body.period as { id: string; installationId: string; versions: { id: string; versionNo: number; status: string }[] };
 }
 
 const move = (who: TestAgent, versionId: string, action: string, reason?: string) =>
@@ -168,6 +168,27 @@ describe('M3-R2 calendar year by default, other 12-month periods with a justific
     await expect(insert('2030-04-01', '2031-03-31', '   ')).rejects.toMatchObject({ constraint: 'reporting_period_justified' });
   });
 
+  it('start dates outside 2023–2100 are a 400 with a field message, never a 500 (review M3 F2)', async () => {
+    for (const body of [
+      { startDate: '0050-01-01', endDate: '0050-12-31' },
+      { startDate: '0050-01-01', endDate: '1950-12-31' },
+      cal(1950),
+      cal(2101),
+    ]) {
+      const res = await consultant.a.post(api(`/installations/${instB}/periods`), body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(res.body.error.issues).toEqual([{ path: ['startDate'], message: 'Choose a start date between 2023 and 2100.' }]);
+    }
+    await expect(
+      withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+        tx
+          .insertInto('reporting_period')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, installation_id: instB, start_date: '1950-01-01', end_date: '1950-12-31' } as never)
+          .execute(),
+      ),
+    ).rejects.toMatchObject({ constraint: 'reporting_period_range' });
+  });
+
   it('dates can be corrected while version 1 is a draft, and not after', async () => {
     const p = await openPeriod(await newInstallation());
     const fix = await consultant.a.patch(api(`/periods/${p.id}`), { startDate: '2026-04-01', endDate: '2027-03-31', justification: 'Financial year' });
@@ -263,6 +284,29 @@ describe('M3-R3 status machine', () => {
     await expect(reopen(ctxOf(consultant, 'consultant'))).rejects.toMatchObject({ code: '23514' });
     await expect(reopen(ctxOf({ id: admin.adminId }, 'platform_admin', { reason: 'x' }))).rejects.toMatchObject({ code: '42501' });
     await expect(reopen(ctxOf(consultant, 'consultant', { reason: 'Fix a typo' }))).resolves.toBeDefined();
+  });
+
+  it('no role can write status history directly; only a real status change does (review M3 F1)', async () => {
+    const p = await openPeriod(instA, cal(2033));
+    const v = p.versions[0]!.id;
+    const forge = (u: { id: string }, role: UserRole) =>
+      withContext(t.db, ctxOf(u, role), (tx) =>
+        tx
+          .insertInto('period_status_change')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, installation_id: instA, period_version_id: v, from_status: 'in_review', to_status: 'approved', reason: 'forged' } as never)
+          .execute(),
+      );
+    for (const [u, role] of [[contributor, 'contributor'], [consultant, 'consultant'], [{ id: admin.adminId }, 'platform_admin']] as const) {
+      await expect(forge(u, role), role).rejects.toMatchObject({ code: '42501' });
+    }
+    // Status changes through the API (including by a reviewer) still write history.
+    await move(consultant.a, v, 'submit');
+    const res = await move(reviewer.a, v, 'approve');
+    expect(res.body.period.history.map((h: { toStatus: string; changedBy: string }) => [h.toStatus, h.changedBy])).toEqual([
+      ['approved', 'Rhea Reviewer'],
+      ['in_review', 'Cara Consultant'],
+      ['draft', 'Cara Consultant'],
+    ]);
   });
 
   it('the status history is append-only', async () => {
@@ -394,6 +438,26 @@ describe('M3-R5 changes after issue go into version n+1', () => {
     await issue(p.versions[0]!.id);
     const results = await Promise.all([1, 2, 3].map(() => consultant.a.post(api(`/periods/${p.id}/versions`))));
     expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409]);
+  });
+
+  it('version n+1 must be based on version n of the same period (review M3 F4)', async () => {
+    const p = await openPeriod(await newInstallation());
+    const other = await openPeriod(await newInstallation());
+    const v1 = p.versions[0]!.id;
+    await issue(v1);
+    const pins = await withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+      tx.selectFrom('period_version').select(['library_version_id', 'template_version_id']).where('id', '=', v1).executeTakeFirstOrThrow(),
+    );
+    const insertV2 = (basedOn: string | null) =>
+      withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+        tx
+          .insertInto('period_version')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, installation_id: p.installationId, period_id: p.id, version_no: 2, based_on_version_id: basedOn, ...pins } as never)
+          .execute(),
+      );
+    await expect(insertV2(other.versions[0]!.id)).rejects.toMatchObject({ code: '23514' });
+    await expect(insertV2(null)).rejects.toMatchObject({ code: '23514' });
+    await expect(insertV2(v1)).resolves.toBeDefined();
   });
 
   it('versions cannot be deleted', async () => {

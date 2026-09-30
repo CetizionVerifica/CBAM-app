@@ -31,6 +31,10 @@ create table reporting_period (
   -- M3-R2: always 12 months. Same arithmetic as periodEndDate() in packages/shared.
   constraint reporting_period_twelve_months
     check (end_date = (start_date + interval '1 year' - interval '1 day')::date),
+  -- CBAM reporting began in Oct 2023; later than 2100 is a typing error (review M3 F2).
+  -- Same bounds as PERIOD_START_MIN/MAX in packages/shared.
+  constraint reporting_period_range
+    check (start_date between date '2023-01-01' and date '2100-12-31'),
   constraint reporting_period_justified
     check ((extract(month from start_date) = 1 and extract(day from start_date) = 1)
            or length(btrim(coalesce(justification, ''))) > 0),
@@ -118,7 +122,7 @@ create function app.guard_period_version() returns trigger
 declare
   v_role   text := app.current_user_role();
   v_reason text := nullif(btrim(current_setting('app.reason', true)), '');
-  v_prev   text;
+  v_prev   record;
 begin
   if tg_op = 'INSERT' then
     if new.status <> 'draft' then
@@ -129,14 +133,19 @@ begin
     -- Versions are numbered 1, 2, 3…; a new one needs the previous one issued (M3-R5).
     -- FOR UPDATE serialises two concurrent "create new version" requests.
     perform 1 from reporting_period where id = new.period_id for update;
-    select status into v_prev from period_version
+    select id, status into v_prev from period_version
      where period_id = new.period_id and version_no = new.version_no - 1;
-    if new.version_no > 1 and v_prev is distinct from 'issued' then
+    if new.version_no > 1 and v_prev.status is distinct from 'issued' then
       raise exception 'A new version needs the previous version to be issued'
         using errcode = 'object_not_in_prerequisite_state';
     end if;
     if new.version_no = 1 and new.based_on_version_id is not null then
       raise exception 'Version 1 is not based on another version' using errcode = 'check_violation';
+    end if;
+    -- Version n+1 is based on version n of the same period (review M3 F4).
+    if new.version_no > 1 and new.based_on_version_id is distinct from v_prev.id then
+      raise exception 'Version % must be based on version % of the same period', new.version_no, new.version_no - 1
+        using errcode = 'check_violation';
     end if;
     perform app.assert_library_published(new.library_version_id);
     return new;
@@ -209,8 +218,12 @@ $$;
 create trigger guard_period_version before insert or update or delete on period_version
   for each row execute function app.guard_period_version();
 
+-- SECURITY DEFINER (owned by cbam_auth): the app role has no INSERT on the history, so the
+-- only way a row gets there is a real status change (review M3 F1).
 create function app.log_period_status() returns trigger
   language plpgsql
+  security definer
+  set search_path = pg_catalog, public, pg_temp
   as $$
 begin
   if tg_op = 'INSERT' or new.status is distinct from old.status then
@@ -364,23 +377,25 @@ create policy period_version_update on period_version for update to cbam_app
 
 create policy period_status_change_read on period_status_change for select to cbam_app
   using (tenant_id = app.current_tenant_id() and app.installation_visible(client_id, installation_id));
--- Rows come from the status trigger, which runs as the acting user.
-create policy period_status_change_insert on period_status_change for insert to cbam_app
-  with check (tenant_id = app.current_tenant_id() and app.installation_visible(client_id, installation_id));
+-- No insert policy or grant: rows come only from app.log_period_status (review M3 F1).
 
 grant select, insert, update on reporting_period, period_version to cbam_app;
-grant select, insert on period_status_change to cbam_app;
+grant select on period_status_change to cbam_app;
 
 -- Privileges first, then ownership (see M1 migration: a non-owner's GRANT/REVOKE is skipped).
 grant select, update on period_version to cbam_auth;  -- FOR SHARE needs UPDATE
+grant insert on period_status_change to cbam_auth;
+revoke execute on function app.log_period_status() from public;
 revoke execute on function app.assert_period_writable(uuid) from public;
 grant execute on function app.assert_period_writable(uuid) to cbam_app;
 alter function app.assert_period_writable(uuid) owner to cbam_auth;
+alter function app.log_period_status() owner to cbam_auth;
 
 -- migrate:down
 
 drop trigger installation_keep_with_periods on installation;
 drop function app.guard_installation_delete();
+revoke all on period_status_change from cbam_auth;
 drop table period_status_change;
 revoke all on period_version from cbam_auth;
 drop table period_version;
