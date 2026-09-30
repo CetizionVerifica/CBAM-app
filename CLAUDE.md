@@ -16,6 +16,7 @@ If code and spec disagree, stop and ask; do not silently change the spec or the 
 - Database: PostgreSQL, migrations in `db/migrations/`.
 - Engine: pure TypeScript package with decimal arithmetic (decimal.js or big.js) — no JS floats for quantities or emissions.
 - Reports: ExcelJS writing into the official template; headless-browser PDF.
+- Files (evidence, generated reports): Cloudinary, private `raw` resources with signed, expiring download links (`apps/api/src/platform/storage.ts`).
 
 ## Repository layout
 ```
@@ -62,7 +63,7 @@ docs/                Spec, design system, reviews
 
 ## Commands
 - Install: `pnpm install` (Node ≥ 22, pnpm 11)
-- Local services (Postgres 17, MinIO, Mailpit): `cp .env.example .env`, fill it in, then `pnpm services:up`
+- Local services (Postgres 17, Mailpit): `cp .env.example .env`, fill it in, then `pnpm services:up`. Files go to Cloudinary: set `CLOUDINARY_URL` (optional in dev)
 - Migrate DB: `pnpm db:migrate` (runs as `cbam_owner`; new migration: `pnpm db:new <name>`)
 - Dev (web + api): `pnpm dev` (web on :5173, proxies `/api` to the API on :4000)
 - Test: `pnpm test` (API tests start their own Postgres via Testcontainers; Docker must be running)

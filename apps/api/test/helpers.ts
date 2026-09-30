@@ -9,6 +9,7 @@ import type { Config } from '../src/config';
 import { randomToken, sha256Hex } from '../src/platform/crypto';
 import { type Db, createDb } from '../src/platform/db';
 import { memoryMailer } from '../src/platform/mailer';
+import { memoryFileStore } from '../src/platform/storage';
 import { totpAt } from '../src/platform/totp';
 
 export const WEB_ORIGIN = 'http://localhost:5173';
@@ -28,6 +29,7 @@ export function testConfig(): Config {
     SESSION_TTL_MINUTES: 720,
     SESSION_IDLE_MINUTES: 120,
     INVITATION_TTL_HOURS: 72,
+    CLOUDINARY_FOLDER: 'cbam-test',
   };
 }
 
@@ -37,9 +39,10 @@ export function testApp() {
   const owner = createDb(inject('ownerUrl'));
   const su = createDb(inject('superUrl'));
   const mailer = memoryMailer();
-  const app = createApp({ db, logger: pino({ level: 'silent' }), mailer, config });
+  const files = memoryFileStore();
+  const app = createApp({ db, logger: pino({ level: 'silent' }), mailer, files, config });
   const close = () => Promise.all([db.destroy(), owner.destroy(), su.destroy()]);
-  return { app, db, owner, su, mailer, config, close };
+  return { app, db, owner, su, mailer, files, config, close };
 }
 
 export type TestApp = ReturnType<typeof testApp>;

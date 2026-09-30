@@ -21,6 +21,7 @@ These are recorded here because they refine the spec. Spec sections 3, 4.1 and 4
 | D10 | **Imports are CSV (M4-R4).** The Commission's default-value file is not in the repo, so imports use the documented CSV layouts in `docs/mappings/library-import.md`. A factors file replaces every factor of the kinds it contains; a CN-code file replaces the whole list. An xlsx reader for the official file can map onto the same layout later. |
 | D11 | **Overrides need approval (M4-R5).** Consultants and admins propose client-specific overrides; only the platform admin approves or rejects. Values never change after the proposal (withdraw and propose again). The engine (M10) will use only approved overrides and mark the value as an override in the trace. |
 | D12 | **Platform operator tenant (M4, review F2).** The library is shared by every tenant, but every tenant's first user is a platform admin. Only the platform admins of the one tenant flagged `tenant.is_platform_operator` may change the library; RLS (`app.is_library_admin()`) and the API both check it. At most one operator exists (unique index). It is set by the owner only: `bootstrap:admin … --platform-operator`, or `pnpm --filter @cbam/api set:platform-operator --slug <slug>`, and the change is audited. With no operator set, nobody can change the library. Library audit entries sit in the operator tenant's trail. |
+| D13 | **Cloudinary instead of S3 for files (requested 2026-09-29).** Evidence (M13) and generated reports (M12) go to Cloudinary through `FileStore` (`apps/api/src/platform/storage.ts`). Every file is a `raw` resource with delivery type `authenticated`: never public and never transformed. Downloads are signed `private_download_url` links that expire after 5 minutes (M13-R2). Credentials come from `CLOUDINARY_URL` (G10), passed per call; there is one root folder per environment (`CLOUDINARY_FOLDER`). Tests use an in-memory store. MinIO is removed from docker-compose. **Check before production:** the data-residency region of the Cloudinary account (evidence holds client data), the plan's raw-file size limit against the upload limit, and backup/retention for the audit period. |
 
 ## Stack choices
 - pnpm workspaces, Node ≥ 22, TypeScript strict, Vitest.
@@ -28,8 +29,8 @@ These are recorded here because they refine the spec. Spec sections 3, 4.1 and 4
 - **Migrations:** dbmate, plain SQL files in `db/migrations`.
 - **Numbers:** Postgres `numeric` with no precision limit. The `pg` driver returns them as strings, which the app handles with decimal.js. JSON carries decimals as strings.
 - **Auth:** database-backed sessions with an httpOnly cookie. Passwords hashed with argon2id. TOTP 2FA via otplib, with the secret encrypted by a key held in an environment variable. Failed logins are rate-limited and accounts lock out.
-- **Files:** S3-compatible object storage (MinIO in dev). Uploads go through the API, which checks size and content type and computes SHA-256. Downloads use presigned GET links valid for 5 minutes.
-- **Dev services** (docker-compose): postgres:17, minio, mailpit.
+- **Files:** Cloudinary (decision D13). Uploads go through the API, which checks size and content type and computes SHA-256. Files are stored as private `raw` resources (`type: authenticated`). Downloads use signed links that expire after 5 minutes (`private_download_url`).
+- **Dev services** (docker-compose): postgres:17, mailpit. Files use a Cloudinary account (a `cbam-dev` folder) in development too.
 - **API tests:** Testcontainers Postgres runs the real migrations and connects as `cbam_app`, so RLS is exercised.
 
 ## Database foundations

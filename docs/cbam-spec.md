@@ -284,7 +284,7 @@ The stack is React front end, Node.js/Express API and PostgreSQL, with the calcu
 | API | Node.js, Express, REST, request validation with a schema library | One router per module |
 | Calculation engine | Pure TypeScript package, decimal arithmetic (no floating point) | Unit-tested against the EU template examples |
 | Database | PostgreSQL, one schema, client_id on every row, row-level security | Tenant and client isolation |
-| Files | Object storage (S3-compatible) | Evidence and generated reports |
+| Files | Cloudinary (private raw files, signed expiring links; phase 1 decision D13) | Evidence and generated reports |
 | Report generation | ExcelJS writing into the official template; headless-browser PDF | Template versions stored in M4 |
 | Jobs | Queue for report generation and bulk imports | Keeps the API responsive |
 
