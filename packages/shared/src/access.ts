@@ -34,6 +34,12 @@ export const PERMISSIONS = {
   // M2: create/edit/delete clients, installations, importers; manage assignments.
   'registry.write': ['platform_admin', 'consultant'],
   'assignments.manage': ['platform_admin', 'consultant'],
+  // M4: edit drafts, import files, publish library versions (M4-R5, AT3) — and only in the
+  // platform operator tenant (decision D12), which the API and RLS check separately.
+  'library.write': ['platform_admin'],
+  // M4-R5: client-specific factor overrides.
+  'overrides.propose': ['platform_admin', 'consultant'],
+  'overrides.decide': ['platform_admin'],
 } as const satisfies Record<string, readonly UserRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

@@ -3,7 +3,10 @@
  * Runs as the owner role (DATABASE_URL), the only role allowed to call auth.bootstrap_tenant.
  *
  *   pnpm --filter @cbam/api bootstrap:admin --org "CETIZION" --slug cetizion \
- *     --email admin@example.com --name "Ada Admin"
+ *     --email admin@example.com --name "Ada Admin" --platform-operator
+ *
+ * --platform-operator makes this tenant the one whose platform admins maintain the shared
+ * reference library (decision D12). Move it later with `set:platform-operator`.
  */
 import { parseArgs } from 'node:util';
 import { sql } from 'kysely';
@@ -17,6 +20,7 @@ const { values } = parseArgs({
     slug: { type: 'string' },
     email: { type: 'string' },
     name: { type: 'string' },
+    'platform-operator': { type: 'boolean', default: false },
   },
 });
 
@@ -25,6 +29,7 @@ const Args = z.object({
   slug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,39}$/, 'lowercase letters, digits and hyphens'),
   email: z.email(),
   name: z.string().min(1),
+  'platform-operator': z.boolean(),
 });
 const Env = z.object({
   DATABASE_URL: z.url(),
@@ -43,6 +48,10 @@ try {
     select * from auth.bootstrap_tenant(${args.org}, ${args.slug}, ${args.email.toLowerCase()}, ${args.name},
                                         ${sha256Hex(token)}, ${expires})`.execute(db);
   console.log(`Tenant created: ${args.org} (${rows[0]!.tenant_id})`);
+  if (args['platform-operator']) {
+    await sql`select auth.set_platform_operator(${args.slug})`.execute(db);
+    console.log('This tenant is the platform operator: its platform admins maintain the reference library.');
+  }
   console.log(`Platform admin invited: ${args.email}`);
   console.log(`Invitation link (single use, expires ${expires.toISOString()}):`);
   console.log(`  ${env.WEB_ORIGIN}/invitation/${token}`);

@@ -1,24 +1,12 @@
 import { z } from 'zod';
 import { Decimal, DecimalString } from './decimal';
+import { optionalText, requiredText } from './fields';
 
 /**
  * M2 — client, installation and EU importer. Shared by API and forms (G8): the API
  * validates the merged record (existing + patch) against the full schema, so cross-field
  * rules hold for partial updates too.
  */
-
-/** Optional free text: trimmed; empty means "not given" and is stored as null. */
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max, `Use at most ${max} characters.`)
-    .transform((v) => (v === '' ? null : v))
-    .nullable()
-    .optional();
-
-const requiredText = (max: number, message: string) =>
-  z.string().trim().min(1, message).max(max, `Use at most ${max} characters.`);
 
 const Email = z.string().trim().toLowerCase().email('Enter a valid email address.').max(254);
 const optionalEmail = z
@@ -48,7 +36,8 @@ export const Eori = z
   .regex(/^[A-Z]{2}[A-Z0-9]{1,15}$/, 'Enter an EORI number: 2-letter country code, then up to 15 letters or digits.');
 
 const coordinate = (limit: number, label: string) =>
-  DecimalString.refine((v) => new Decimal(v).abs().lte(limit), `${label} must be between −${limit} and ${limit}.`)
+  // Guarded: Zod runs refinements even after DecimalString's regex fails.
+  DecimalString.refine((v) => !/^-?\d+(\.\d+)?$/.test(v) || new Decimal(v).abs().lte(limit), `${label} must be between −${limit} and ${limit}.`)
     .refine((v) => (v.split('.')[1]?.length ?? 0) <= 6, `${label} can have at most 6 decimal places.`);
 
 const optionalCoordinate = (limit: number, label: string) =>

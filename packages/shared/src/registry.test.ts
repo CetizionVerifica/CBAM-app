@@ -45,4 +45,10 @@ describe('M2-R4 validation', () => {
     const v = InstallationInput.parse({ ...installation, nameLocal: '  ', unLocode: '', latitude: '', longitude: '' });
     expect(v).toMatchObject({ nameLocal: null, unLocode: null, latitude: null, longitude: null });
   });
+
+  it('answers a non-number coordinate with a message, not an exception', () => {
+    expect(issues(InstallationInput.safeParse({ ...installation, latitude: 'abc', longitude: '70.1' }))).toEqual([
+      'latitude: Enter a number, using a dot as the decimal separator.',
+    ]);
+  });
 });

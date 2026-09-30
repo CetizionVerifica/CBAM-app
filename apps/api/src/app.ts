@@ -8,6 +8,7 @@ import type { Logger } from 'pino';
 import type { Config } from './config';
 import { authRouter, usersRouter } from './modules/m01-access';
 import { registryRouter } from './modules/m02-registry/registry.router';
+import { libraryRouter, overridesRouter } from './modules/m04-reference';
 import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
 import { errorHandler, notFound } from './platform/errors';
@@ -25,7 +26,12 @@ export function createApp({ db, logger, mailer, config }: AppDeps) {
   app.disable('x-powered-by');
   app.set('trust proxy', config.TRUST_PROXY);
   app.use(helmet());
-  app.use(express.json({ limit: '1mb' }));
+  // Library imports carry a CSV file (M4-R4) and parse their own larger body, after
+  // authentication and the permission check (review M4 F8); everything else stays small.
+  const jsonSmall = express.json({ limit: '1mb' });
+  app.use((req, res, next) =>
+    /^\/api\/v1\/library\/versions\/[^/]+\/imports$/.test(req.path) ? next() : jsonSmall(req, res, next),
+  );
   app.use(cookieParser());
   app.use(
     pinoHttp({
@@ -52,6 +58,8 @@ export function createApp({ db, logger, mailer, config }: AppDeps) {
   api.use('/auth', authRouter(access));
   api.use('/users', usersRouter(access));
   api.use('/', registryRouter({ db }));
+  api.use('/', libraryRouter({ db }));
+  api.use('/', overridesRouter({ db }));
 
   app.use('/api/v1', api);
   app.use(notFound);

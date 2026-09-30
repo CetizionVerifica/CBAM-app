@@ -7,7 +7,8 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bootstrap:admin": "tsx --env-file-if-exists=../../.env src/cli/bootstrap-admin.ts"
+    "bootstrap:admin": "tsx --env-file-if-exists=../../.env src/cli/bootstrap-admin.ts",
+    "set:platform-operator": "tsx --env-file-if-exists=../../.env src/cli/set-platform-operator.ts"
   },
   "dependencies": {
     "@cbam/shared": "workspace:*",

@@ -3,4 +3,6 @@ export * from './enums';
 export * from './units';
 export * from './quantity';
 export * from './access';
+export * from './fields';
 export * from './registry';
+export * from './library';
