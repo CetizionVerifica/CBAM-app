@@ -7,11 +7,14 @@ import type { PeriodCopier } from '../m03-periods';
  * Verification does not carry over: a new version needs its own opinion.
  */
 export const copyPeriodEvidence: PeriodCopier = async (tx, from, to) => {
+  // Deleted evidence does not carry over (review M13 F1): its old links stay as history.
   const links = await tx
-    .selectFrom('evidence_link')
-    .select(['tenant_id', 'client_id', 'evidence_id'])
-    .where('record_table', '=', 'period_version')
-    .where('record_id', '=', from.periodVersionId)
+    .selectFrom('evidence_link as l')
+    .innerJoin('evidence_document as d', 'd.id', 'l.evidence_id')
+    .select(['l.tenant_id', 'l.client_id', 'l.evidence_id'])
+    .where('l.record_table', '=', 'period_version')
+    .where('l.record_id', '=', from.periodVersionId)
+    .where('d.deleted_at', 'is', null)
     .execute();
   if (links.length === 0) return;
   await tx

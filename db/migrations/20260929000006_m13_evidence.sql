@@ -98,7 +98,20 @@ begin
   if tg_op = 'UPDATE' then
     raise exception 'An evidence link cannot be changed; remove it and link again' using errcode = 'object_not_in_prerequisite_state';
   end if;
-  -- record_table is checked against app.evidence_linkable by the FK; quote it anyway.
+  -- Only configured tables, checked before any dynamic SQL runs (review M13 F4); %I quotes
+  -- the name anyway.
+  if not exists (select 1 from app.evidence_linkable where table_name = new.record_table) then
+    raise exception 'Evidence cannot be linked to %', new.record_table using errcode = 'check_violation';
+  end if;
+  -- The caller must see the evidence itself: an invisible row would read as NULLs and skip
+  -- the deleted and installation checks below (review M13 F4).
+  select installation_id, deleted_at into v_doc from evidence_document where id = new.evidence_id;
+  if not found then
+    raise exception 'The evidence to link does not exist' using errcode = 'foreign_key_violation';
+  end if;
+  if v_doc.deleted_at is not null then
+    raise exception 'This evidence has been deleted' using errcode = 'foreign_key_violation';
+  end if;
   execute format('select to_jsonb(t) from public.%I t where id = $1', new.record_table) into v_row using new.record_id;
   if v_row is null or (v_row ->> 'deleted_at') is not null then
     raise exception 'The record to link does not exist' using errcode = 'foreign_key_violation';
@@ -108,10 +121,6 @@ begin
     raise exception 'Evidence and record belong to different clients' using errcode = 'check_violation';
   end if;
   v_inst := (case when new.record_table = 'installation' then v_row ->> 'id' else v_row ->> 'installation_id' end)::uuid;
-  select installation_id, deleted_at into v_doc from evidence_document where id = new.evidence_id;
-  if v_doc.deleted_at is not null then
-    raise exception 'This evidence has been deleted' using errcode = 'foreign_key_violation';
-  end if;
   -- A file filed under one site supports only that site's records (or client-level ones).
   if v_doc.installation_id is not null and v_inst is not null and v_inst <> v_doc.installation_id then
     raise exception 'This evidence belongs to another installation' using errcode = 'check_violation';
@@ -319,9 +328,12 @@ create policy evidence_link_read on evidence_link for select to cbam_app
 create policy evidence_link_insert on evidence_link for insert to cbam_app
   with check (tenant_id = app.current_tenant_id() and app.can_upload_evidence()
               and app.evidence_visible(client_id, installation_id));
+-- Contributors remove only the links they made (review M13 F3); they may link any file they
+-- can see, since the file is already filed under their installation (D15).
 create policy evidence_link_delete on evidence_link for delete to cbam_app
   using (tenant_id = app.current_tenant_id() and app.can_upload_evidence()
-         and app.evidence_visible(client_id, installation_id));
+         and app.evidence_visible(client_id, installation_id)
+         and (app.can_manage_registry() or created_by = app.current_user_id()));
 
 create policy verification_read on verification for select to cbam_app
   using (tenant_id = app.current_tenant_id() and app.installation_visible(client_id, installation_id));

@@ -237,7 +237,7 @@ function EvidenceDetail({ evidence: ev, onClose }: { evidence: EvidenceSummary; 
       <div>
         <h3 className="mb-2 text-body font-semibold text-ink">Supports</h3>
         {ev.links.length === 0 ? (
-          <p className="text-small text-ink-muted">Not linked to any record yet. Link it from the record’s screen.</p>
+          <p className="text-small text-ink-muted">Not linked to any record yet. On the record’s screen, choose Add evidence, then Link existing evidence.</p>
         ) : (
           <ul className="flex flex-col gap-1 text-small text-ink">
             {ev.links.map((l) => (

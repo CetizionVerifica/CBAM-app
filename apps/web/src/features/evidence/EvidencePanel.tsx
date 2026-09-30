@@ -4,13 +4,14 @@ import { Download, Lock } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/components/Button';
+import { SelectField } from '@/components/Field';
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/States';
 import { useToast } from '@/components/Toast';
 import { ApiError, api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useMe } from '@/lib/session';
 import { EvidenceUpload } from './EvidenceUpload';
-import { downloadEvidence, evidenceKeys, formatBytes, useRecordEvidence } from './queries';
+import { downloadEvidence, evidenceKeys, formatBytes, useClientEvidence, useRecordEvidence } from './queries';
 
 /**
  * Evidence supporting one record (M13-R1), for the record's own screen: list, download,
@@ -35,11 +36,37 @@ export function EvidencePanel({
   const evidence = useRecordEvidence(recordType, recordId);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [picked, setPicked] = useState('');
+  // Files of this client that could support this record too (M13-R1; review M13 F2).
+  const library = useClientEvidence(adding ? clientId : '');
+  const candidates = (library.data ?? []).filter(
+    (e) =>
+      !e.links.some((l) => l.recordType === recordType && l.recordId === recordId) &&
+      (!installationId || !e.installationId || e.installationId === installationId),
+  );
   const canUpload = can(me.user.role, 'evidence.upload') && !locked;
   if (!can(me.user.role, 'evidence.read')) return null;
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: evidenceKeys.all });
+  };
+
+  const linkExisting = async () => {
+    setError(null);
+    try {
+      await api.post(`/evidence/${picked}/links`, { recordType, recordId });
+      setPicked('');
+      refresh();
+      toast('Evidence linked');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
+    }
+  };
+
+  // Contributors remove only the links they made (review M13 F3).
+  const canUnlink = (ev: EvidenceSummary) => {
+    const link = ev.links.find((l) => l.recordType === recordType && l.recordId === recordId);
+    return canUpload && !!link && (can(me.user.role, 'evidence.manage') || link.createdById === me.user.id);
   };
 
   const unlink = async (ev: EvidenceSummary) => {
@@ -59,8 +86,8 @@ export function EvidencePanel({
     <section className="mt-8">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-h2 font-semibold text-ink">Evidence</h2>
-        {canUpload && evidence.data && evidence.data.length > 0 && (
-          <Button onClick={() => setAdding((a) => !a)}>{adding ? 'Close' : 'Add evidence'}</Button>
+        {canUpload && evidence.data && (
+          <Button onClick={() => setAdding((a) => !a)}>{adding ? 'Close' : evidence.data.length ? 'Add evidence' : 'Link existing evidence'}</Button>
         )}
       </div>
       {locked && (
@@ -99,7 +126,7 @@ export function EvidencePanel({
                   <Button variant="quiet" onClick={() => downloadEvidence(ev.id).catch((e) => setError(e instanceof ApiError ? e.message : 'Download failed. Try again.'))}>
                     <Download aria-hidden className="size-4" strokeWidth={1.5} /> Download
                   </Button>
-                  {canUpload && (
+                  {canUnlink(ev) && (
                     <Button variant="quiet" onClick={() => unlink(ev)}>
                       Unlink
                     </Button>
@@ -112,6 +139,23 @@ export function EvidencePanel({
             <div className="mt-3">
               {evidence.data.length === 0 && (
                 <p className="mb-3 text-body text-ink">No evidence yet. Attach the invoices, meter readings or reports that support this record.</p>
+              )}
+              {adding && (
+                <div className="mb-4 flex flex-wrap items-end gap-2">
+                  <div className="w-80">
+                    <SelectField
+                      label="Link existing evidence"
+                      value={picked}
+                      onChange={(e) => setPicked(e.target.value)}
+                      disabled={library.isPending}
+                      options={[
+                        { value: '', label: library.isPending ? 'Loading files…' : candidates.length ? 'Choose a file…' : 'No other files to link' },
+                        ...candidates.map((e) => ({ value: e.id, label: `${e.title} (${EVIDENCE_DOC_TYPE_LABELS[e.docType]})` })),
+                      ]}
+                    />
+                  </div>
+                  <Button onClick={linkExisting} disabled={!picked}>Link evidence</Button>
+                </div>
               )}
               <EvidenceUpload
                 clientId={clientId}

@@ -28,7 +28,8 @@ export const EVIDENCE_ACCEPT = Object.keys(EVIDENCE_FILE_TYPES).map((e) => `.${e
 
 /** Why a file is refused before upload, in the words the UI shows; null when it is fine. */
 export function evidenceFileProblem(name: string, bytes: number): string | null {
-  const ext = name.toLowerCase().split('.').pop() ?? '';
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
   if (!(ext in EVIDENCE_FILE_TYPES)) return 'Only PDF, PNG, JPEG, XLSX and CSV files are accepted.';
   if (bytes === 0) return 'This file is empty.';
   if (bytes > EVIDENCE_MAX_BYTES) return 'Files over 25 MB aren’t accepted. Split or compress the file.';
@@ -83,6 +84,8 @@ export interface EvidenceLinkSummary {
   id: string;
   recordType: EvidenceRecordType;
   recordId: string;
+  /** Who made the link: contributors remove only their own (review M13 F3). */
+  createdById: string;
   /** Human label, e.g. "Installation: Jamnagar smelter"; null when the caller cannot see the record. */
   label: string | null;
   /** Links to an approved or issued period cannot be removed (M13-R4). */

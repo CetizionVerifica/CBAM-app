@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { sql } from 'kysely';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -29,7 +31,42 @@ const api = (path: string) => `/api/v1${path}`;
 
 const PDF = (text: string = randomUUID()) => Buffer.from(`%PDF-1.7\n${text}\n%%EOF`);
 const PNG = () => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(randomUUID())]);
-const XLSX = () => Buffer.from(`PK\u0003\u0004[Content_Types].xml xl/workbook.xml ${randomUUID()}`, 'latin1');
+// A real workbook: the official template (read only, never changed).
+const TEMPLATE = () => readFileSync(resolve(import.meta.dirname, '../../../templates/CBAM_Communication_Template_Installations_2026-Q2.xlsx'));
+
+/** A minimal stored (uncompressed) ZIP with a central directory, for crafted archives. */
+function zip(entries: { name: string; data: string }[]): Buffer {
+  const locals: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = Buffer.from(e.name);
+    const data = Buffer.from(e.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    locals.push(local, name, data);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt32LE(data.length, 20);
+    cd.writeUInt32LE(data.length, 24);
+    cd.writeUInt16LE(name.length, 28);
+    cd.writeUInt32LE(offset, 42);
+    central.push(cd, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((n, b) => n + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cdSize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, ...central, end]);
+}
+const SHEET_TYPES = '<Types><Override ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>';
 const CSV = () => Buffer.from(`date,reading\n2026-01-31,${Math.random()}\n`);
 
 /** Raw-body upload, as the web client sends it. */
@@ -147,6 +184,50 @@ describe('M13-R1 evidence on any record; one file supports many records', () => 
     expect(res.body.error.code).toBe('wrong_installation');
   });
 
+  it('contributors remove only the links they made (review M13 F3)', async () => {
+    const p = await openPeriod(instA);
+    const v = p.versions[0]!.id;
+    const byConsultant = await upload(consultant, { installationId: instA, recordType: 'period_version', recordId: v });
+    // Contributors may link a file they can see (D15)…
+    const linked = await contributor.a.post(api(`/evidence/${byConsultant.id}/links`), { recordType: 'installation', recordId: instA });
+    expect(linked.status).toBe(201);
+    const links = linked.body.evidence.links as { id: string; recordType: string; createdById: string }[];
+    const consultantsLink = links.find((l) => l.recordType === 'period_version')!;
+    const ownLink = links.find((l) => l.recordType === 'installation')!;
+    expect(ownLink.createdById).toBe(contributor.id);
+    // …but not remove the consultant's link, through the API or directly.
+    const res = await contributor.a.delete(api(`/evidence/${byConsultant.id}/links/${consultantsLink.id}`));
+    expect(res.status).toBe(403);
+    expect(res.body.error.message).toBe('You can remove only the links you made.');
+    const direct = await withContext(t.db, ctxOf(contributor, 'contributor'), (tx) =>
+      tx.deleteFrom('evidence_link').where('id', '=', consultantsLink.id).executeTakeFirst(),
+    );
+    expect(Number(direct.numDeletedRows)).toBe(0);
+    expect((await contributor.a.delete(api(`/evidence/${byConsultant.id}/links/${ownLink.id}`))).status).toBe(204);
+    expect((await consultant.a.delete(api(`/evidence/${byConsultant.id}/links/${consultantsLink.id}`))).status).toBe(204);
+  });
+
+  it('the database refuses links to evidence the caller cannot see, deleted evidence, and unconfigured tables (review M13 F4)', async () => {
+    const p = await openPeriod(instA);
+    const v = p.versions[0]!.id;
+    const clientLevel = await upload(consultant); // invisible to the contributor
+    const deletedB = await upload(consultant, { installationId: instB });
+    await consultant.a.delete(api(`/evidence/${deletedB.id}`));
+    const insert = (u: { id: string }, role: UserRole, evidenceId: string, table = 'period_version', recordId = v) =>
+      withContext(t.db, ctxOf(u, role), (tx) =>
+        tx
+          .insertInto('evidence_link')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, evidence_id: evidenceId, record_table: table, record_id: recordId } as never)
+          .execute(),
+      );
+    await expect(insert(contributor, 'contributor', clientLevel.id)).rejects.toMatchObject({ code: '23503' });
+    await expect(insert(consultant, 'consultant', deletedB.id)).rejects.toMatchObject({ code: '23503' });
+    await expect(insert(consultant, 'consultant', clientLevel.id, 'app_user', consultant.id)).rejects.toMatchObject({
+      code: '23514',
+      message: 'Evidence cannot be linked to app_user',
+    });
+  });
+
   it('link columns come from the record, not the request', async () => {
     const p = await openPeriod(instB);
     const ev = await upload(consultant);
@@ -238,7 +319,7 @@ describe('M13-R3 type and size limits, content check', () => {
 
   it('accepts PDF, PNG, XLSX and CSV whose bytes match their name', async () => {
     await upload(consultant, { fileName: 'site.png', docType: 'photo' }, PNG());
-    await upload(consultant, { fileName: 'readings.xlsx' }, XLSX());
+    await upload(consultant, { fileName: 'template.xlsx' }, TEMPLATE());
     const csv = await upload(consultant, { fileName: 'readings.csv' }, CSV());
     expect((await consultant.a.get(api(`/evidence/${(csv as { id: string }).id}`))).body.evidence.contentType).toBe('text/csv');
   });
@@ -248,10 +329,25 @@ describe('M13-R3 type and size limits, content check', () => {
     expect(await refused('invoice.pdf', Buffer.from('MZ\u0090\u0000binary'))).toEqual([400, 'This file is not a real PDF file. Export it again from the program that made it.']);
     expect((await refused('photo.png', PDF()))[0]).toBe(400);
     expect((await refused('book.xlsx', Buffer.from('PK\u0003\u0004word/document.xml', 'latin1')))[0]).toBe(400);
+    // Review M13 F5: names in the bytes are not enough; the archive must be a real workbook.
+    const fake = Buffer.from(`PK\u0003\u0004[Content_Types].xml xl/workbook.xml ${randomUUID()}`, 'latin1');
+    expect(await refused('fake.xlsx', fake)).toEqual([400, 'This file is not a real XLSX file. Export it again from the program that made it.']);
+    const notSheet = zip([{ name: '[Content_Types].xml', data: '<Types/>' }, { name: 'xl/workbook.xml', data: '<workbook/>' }]);
+    expect((await refused('doc.xlsx', notSheet))[0]).toBe(400);
+    const macros = zip([
+      { name: '[Content_Types].xml', data: SHEET_TYPES.replace('</Types>', '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>') },
+      { name: 'xl/workbook.xml', data: '<workbook/>' },
+      { name: 'xl/vbaProject.bin', data: 'MZ' },
+    ]);
+    expect(await refused('macros.xlsx', macros)).toEqual([400, 'Workbooks with macros aren’t accepted. Save it as a plain .xlsx workbook and upload it again.']);
+    // A crafted but well-formed sheet archive passes the content check (structure, not virus scanning; D15).
+    expect((await uploadAs(consultant, clientId, zip([{ name: '[Content_Types].xml', data: SHEET_TYPES }, { name: 'xl/workbook.xml', data: `<workbook id="${randomUUID()}"/>` }]), { fileName: 'min.xlsx', docType: 'other' })).status).toBe(201);
+    // A name without an extension is refused, whatever the name says.
+    expect(await refused('pdf', PDF())).toEqual([400, 'Only PDF, PNG, JPEG, XLSX and CSV files are accepted.']);
     expect((await refused('data.csv', Buffer.from([0x61, 0x00, 0x62])))[0]).toBe(400);
     expect(await refused('empty.pdf', Buffer.alloc(0))).toEqual([400, 'This file is empty.']);
     const big = Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(25 * 1024 * 1024)]);
-    expect((await refused('big.pdf', big))[0]).toBe(413);
+    expect(await refused('big.pdf', big)).toEqual([413, 'Files over 25 MB aren’t accepted. Split or compress the file.']);
   });
 
   it('the same file twice for one client is named, and nothing is stored for refused uploads', async () => {
@@ -261,6 +357,7 @@ describe('M13-R3 type and size limits, content check', () => {
     const res = await uploadAs(consultant, clientId, body, { fileName: 'copy.pdf', docType: 'invoice' });
     expect(res.status).toBe(409);
     expect(res.body.error.message).toBe('This file is already in the evidence library as “Invoice 42”.');
+    expect(res.body.error.details.existingId).toMatch(/^[0-9a-f-]{36}$/);
     await refused('setup.exe', Buffer.from('MZ'));
     expect(t.files.files.size).toBe(before);
   });
@@ -315,6 +412,23 @@ describe('M13-R4 evidence on an approved or issued period is frozen', () => {
     expect((await contributor.a.delete(api(`/evidence/${consultants.id}`))).status).toBe(403);
     expect((await contributor.a.patch(api(`/evidence/${theirs.id}`), { title: 'Gas bill March' })).status).toBe(200);
     expect((await contributor.a.delete(api(`/evidence/${theirs.id}`))).status).toBe(204);
+  });
+
+  it('deleted evidence does not block or carry over into version 2 (review M13 F1)', async () => {
+    const p = await openPeriod(instB);
+    const v1 = p.versions[0]!.id;
+    const kept = await upload(consultant, { recordType: 'period_version', recordId: v1 });
+    const gone = await upload(consultant, { recordType: 'period_version', recordId: v1 });
+    expect((await consultant.a.delete(api(`/evidence/${gone.id}`))).status).toBe(204);
+    await approve(v1);
+    await move(consultant.a, v1, 'issue');
+    const next = await consultant.a.post(api(`/periods/${p.id}/versions`));
+    expect(next.status, JSON.stringify(next.body)).toBe(201);
+    const onV2 = (await consultant.a.get(api(`/records/period_version/${next.body.period.versions[0].id}/evidence`))).body.evidence;
+    expect(onV2.map((e: { id: string }) => e.id)).toEqual([kept.id]);
+    // And linking deleted evidence says so, instead of a 500.
+    const late = await consultant.a.post(api(`/evidence/${gone.id}/links`), { recordType: 'installation', recordId: instB });
+    expect(late.status).toBe(404); // deleted evidence is gone for the API
   });
 
   it('evidence on the period carries over to version 2 after issue', async () => {

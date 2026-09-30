@@ -9,6 +9,7 @@ import {
 } from '@cbam/shared';
 import { Upload } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
+import { Button } from '@/components/Button';
 import { SelectField } from '@/components/Field';
 import { ErrorState } from '@/components/States';
 import { ApiError, api } from '@/lib/api';
@@ -45,6 +46,19 @@ export function EvidenceUpload({
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  // The same file is already in the library: offer to link it instead (review M13 F2).
+  const [duplicate, setDuplicate] = useState<{ message: string; existingId: string } | null>(null);
+
+  const linkExisting = async (existingId: string) => {
+    try {
+      const { evidence } = await api.post<{ evidence: EvidenceSummary }>(`/evidence/${existingId}/links`, record);
+      setDuplicate(null);
+      onUploaded(evidence);
+    } catch (e) {
+      setDuplicate(null);
+      setProblems([e instanceof ApiError ? e.message : 'Something went wrong. Try again.']);
+    }
+  };
 
   const send = async (files: File[]) => {
     if (siteMissing) {
@@ -52,6 +66,7 @@ export function EvidenceUpload({
       return;
     }
     const found: string[] = [];
+    setDuplicate(null);
     for (const file of files) {
       const problem = evidenceFileProblem(file.name, file.size);
       if (problem) {
@@ -69,6 +84,11 @@ export function EvidenceUpload({
         });
         onUploaded(evidence);
       } catch (e) {
+        const existingId = e instanceof ApiError ? (e.details as { existingId?: string } | undefined)?.existingId : undefined;
+        if (e instanceof ApiError && e.code === 'duplicate' && existingId && record) {
+          setDuplicate({ message: `${file.name}: ${e.message}`, existingId });
+          continue;
+        }
         found.push(`${file.name}: ${e instanceof ApiError ? e.message : 'Something went wrong. Try again.'}`);
       }
     }
@@ -144,6 +164,12 @@ export function EvidenceUpload({
           }}
         />
       </label>
+      {duplicate && (
+        <ErrorState
+          message={duplicate.message}
+          actions={<Button onClick={() => linkExisting(duplicate.existingId)}>Link the existing file</Button>}
+        />
+      )}
       {problems.length > 0 && (
         <ErrorState
           message={problems.length === 1 ? problems[0]! : `${problems.length} files were not uploaded. ${problems.join(' ')}`}

@@ -33,6 +33,10 @@ function mapEvidenceDbError(e: unknown): never {
   if (err.code === '23505' && err.constraint === 'evidence_link_evidence_id_record_table_record_id_key') {
     throw new AppError(409, 'duplicate', 'This evidence is already linked to that record.');
   }
+  if (err.code === '23503' && err.message?.includes('has been deleted')) {
+    throw new AppError(409, 'deleted', 'This evidence has been deleted, so it cannot support another record.');
+  }
+  if (err.code === '23503' && err.message?.includes('evidence to link')) throw notFound('evidence');
   if (err.code === '23503' && err.message?.includes('does not exist')) throw notFound('record');
   if (err.code === '23514' && err.message?.includes('different clients')) {
     throw new AppError(409, 'wrong_client', 'That record belongs to another client, so this evidence cannot support it.');
@@ -58,6 +62,7 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
   const router = Router();
   router.use(['/clients/:id/evidence', '/evidence', '/records'], requireAuth);
   const upload = requirePermission('evidence.upload');
+  const rawBody = express.raw({ type: () => true, limit: EVIDENCE_MAX_BYTES });
 
   const loadEvidence = async (tx: Tx, id: string) => {
     const row = await tx.selectFrom('evidence_document').selectAll().where('id', '=', id).where('deleted_at', 'is', null).executeTakeFirst();
@@ -70,12 +75,14 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
   const assertNotDuplicate = async (tx: Tx, clientId: string, sha256: string) => {
     const same = await tx
       .selectFrom('evidence_document')
-      .select('title')
+      .select(['id', 'title'])
       .where('client_id', '=', clientId)
       .where('sha256', '=', sha256)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
-    if (same) throw new AppError(409, 'duplicate', `This file is already in the evidence library as “${same.title}”.`);
+    if (same) {
+      throw new AppError(409, 'duplicate', `This file is already in the evidence library as “${same.title}”.`, { existingId: same.id });
+    }
   };
 
   /** Evidence rows with their visible links, labels, lock state and uploader names. */
@@ -85,7 +92,7 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
     const links = await tx
       .selectFrom('evidence_link as l')
       .leftJoin('period_version as v', 'v.id', 'l.period_version_id')
-      .select(['l.id', 'l.evidence_id', 'l.record_table', 'l.record_id', 'v.status'])
+      .select(['l.id', 'l.evidence_id', 'l.record_table', 'l.record_id', 'l.created_by', 'v.status'])
       .where('l.evidence_id', 'in', ids)
       .orderBy('l.created_at')
       .execute();
@@ -123,6 +130,7 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
           id: l.id,
           recordType: l.record_table as EvidenceRecordType,
           recordId: l.record_id,
+          createdById: l.created_by,
           label: labels.get(labelKey(l.record_table as EvidenceRecordType, l.record_id)) ?? null,
           locked: l.status === 'approved' || l.status === 'issued',
         })),
@@ -141,8 +149,14 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
   router.post(
     '/clients/:id/evidence',
     upload,
-    // The file is the raw body; metadata comes in the query string.
-    express.raw({ type: () => true, limit: EVIDENCE_MAX_BYTES }),
+    // The file is the raw body; metadata comes in the query string. Oversize files get the
+    // design system 5.9 wording, not the generic one (review M13 F5).
+    (req, res, next) =>
+      rawBody(req, res, (err?: { type?: string }) =>
+        err?.type === 'entity.too.large'
+          ? next(new AppError(413, 'too_large', 'Files over 25 MB aren’t accepted. Split or compress the file.'))
+          : next(err),
+      ),
     async (req, res) => {
       const clientId = idParam(req.params.id, 'client');
       const q = EvidenceUploadQuery.parse(req.query);
@@ -331,6 +345,12 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
     const linkId = idParam(req.params.linkId, 'link');
     await withContext(db, contextOf(req, 'Unlink evidence'), async (tx) => {
       await loadEvidence(tx, id);
+      if (!can(req.auth!.user.role, 'evidence.manage')) {
+        const link = await tx.selectFrom('evidence_link').select('created_by').where('id', '=', linkId).where('evidence_id', '=', id).executeTakeFirst();
+        if (link && link.created_by !== req.auth!.user.id) {
+          throw new AppError(403, 'forbidden', 'You can remove only the links you made.');
+        }
+      }
       const deleted = await tx
         .deleteFrom('evidence_link')
         .where('id', '=', linkId)

@@ -38,7 +38,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | M10 | Calculation engine | 2 Calculation core | Missing | — | — | — |
 | M11 | Validation and review | 3 Review and outputs | Missing | — | — | — |
 | M12 | Report generator | 3 Review and outputs | Missing (template file only) | — | — | — |
-| M13 | Evidence and audit | 1 Foundation | **Built** (malware scan not configured, D15); review: pending | see below | see below | see below |
+| M13 | Evidence and audit | 1 Foundation | **Built** (malware scan not configured, D15); review: Ready with conditions → F1–F5, F7 fixed (see `M13.md`) | see below | see below | see below |
 
 ## M1 — as built
 
@@ -78,7 +78,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | Routes | `POST/GET /api/v1/clients/:id/evidence`, `GET/PATCH/DELETE /evidence/:id`, `GET /evidence/:id/download`, `POST /evidence/:id/links`, `DELETE /evidence/:id/links/:linkId`, `GET /records/:type/:id/evidence`, `GET/PUT /period-versions/:id/verification`, `POST /period-versions/:id/verification/approvals`, `GET /audit`, `GET /audit.csv` |
 | Tables | `evidence_document`, `evidence_link`, `verification`, `app.evidence_linkable`; audit trail read policy widened (migration `20260929000006_m13_evidence.sql`) |
 | Screens | Evidence library (filters, detail pane), evidence panel on client, installation and period pages, verification section on the period page, audit trail (filters, CSV export) |
-| Review | pending (`docs/reviews/M13.md`) |
+| Review | `docs/reviews/M13.md` (independent; F1, F2 High and F3–F5, F7 Medium fixed; F6 open for the product owner) |
 
 ## M4 — as built
 

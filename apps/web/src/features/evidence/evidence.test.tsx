@@ -30,7 +30,7 @@ const doc = (over: Partial<EvidenceSummary> = {}): EvidenceSummary => ({
   uploadedAt: '2026-02-01T09:00:00Z',
   uploadedById: 'u2',
   uploadedBy: 'Kiran Contributor',
-  links: [{ id: 'l1', recordType: 'installation', recordId: 'i1', label: 'Installation: Jamnagar smelter', locked: false }],
+  links: [{ id: 'l1', recordType: 'installation', recordId: 'i1', createdById: 'u2', label: 'Installation: Jamnagar smelter', locked: false }],
   locked: false,
   ...over,
 });
@@ -85,6 +85,43 @@ describe('evidence panel (M13-R1, R3, R4)', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
     expect(calls.find((c) => c.method === 'POST')?.body).toBeInstanceOf(File);
     expect(await screen.findByText('Evidence uploaded')).toBeInTheDocument();
+  });
+
+  it('links an existing file of the client to this record (review M13 F2)', async () => {
+    const other = doc({ id: 'e2', title: 'Lab report, coke', docType: 'lab_report', links: [] });
+    const calls = renderPanel('consultant', [doc()], false, {
+      'GET /clients/c1/evidence': { status: 200, body: { evidence: [doc(), other] } },
+      'POST /evidence/e2/links': { status: 201, body: { evidence: other } },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Add evidence' }));
+    const picker = await screen.findByLabelText('Link existing evidence');
+    // The file already linked here is not offered again.
+    await waitFor(() => expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a file…', 'Lab report, coke (Lab report)']));
+    await userEvent.selectOptions(picker, 'e2');
+    await userEvent.click(screen.getByRole('button', { name: 'Link evidence' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ recordType: 'installation', recordId: 'i1' }));
+    expect(await screen.findByText('Evidence linked')).toBeInTheDocument();
+  });
+
+  it('a duplicate upload offers to link the existing file', async () => {
+    const calls = renderPanel('consultant', [], false, {
+      'POST /clients/c1/evidence?fileName=gas.pdf&docType=other&installationId=i1&recordType=installation&recordId=i1': {
+        status: 409,
+        body: { error: { code: 'duplicate', message: 'This file is already in the evidence library as “Gas bill”.', details: { existingId: 'e9' } } },
+      },
+      'POST /evidence/e9/links': { status: 201, body: { evidence: doc({ id: 'e9' }) } },
+    });
+    await screen.findByText(/No evidence yet/);
+    await userEvent.upload(fileInput(), new File(['%PDF-1.7'], 'gas.pdf', { type: 'application/pdf' }));
+    expect(await screen.findByText('gas.pdf: This file is already in the evidence library as “Gas bill”.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Link the existing file' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/evidence/e9/links')).toBe(true));
+  });
+
+  it('a contributor sees Unlink only on links they made (review M13 F3)', async () => {
+    renderPanel('contributor', [doc({ links: [{ id: 'l1', recordType: 'installation', recordId: 'i1', createdById: 'someone-else', label: 'Installation: J', locked: false }] })]);
+    expect(await screen.findByRole('button', { name: /Download/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unlink' })).toBeNull();
   });
 
   it('a locked period shows the files read-only', async () => {

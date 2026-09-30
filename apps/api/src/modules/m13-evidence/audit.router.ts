@@ -28,6 +28,36 @@ export function changesOf(op: string, oldRow: Json, newRow: Json, changedFields:
     .map((field) => ({ field, old: oldRow?.[field] ?? null, new: newRow?.[field] ?? null }));
 }
 
+const CSV_PAGE = 1000;
+
+/**
+ * Writes the CSV for every entry `fetchPage` returns, page after page (newest first), until a
+ * page is short: nothing is cut off (review M13 F7). Exported for tests.
+ */
+export async function exportAuditCsv(
+  fetchPage: (before: number | undefined) => Promise<AuditEntry[]>,
+  write: (chunk: string) => void,
+  pageSize = CSV_PAGE,
+): Promise<number> {
+  const header = ['Time (UTC)', 'User', 'Role', 'Action', 'Operation', 'Table', 'Record', 'Field', 'Old value', 'New value', 'Reason'];
+  write(`﻿${header.map(csvCell).join(',')}\r\n`);
+  let before: number | undefined;
+  let total = 0;
+  for (;;) {
+    const page = await fetchPage(before);
+    const lines: string[] = [];
+    for (const e of page) {
+      const base = [e.occurredAt, e.actorName ?? e.actorId, e.actorRole, e.action, e.op, e.table, e.recordId];
+      const changes = e.changes.length ? e.changes : [{ field: '', old: null, new: null }];
+      for (const c of changes) lines.push([...base, c.field, c.old, c.new, e.reason].map(csvCell).join(','));
+    }
+    if (lines.length) write(`${lines.join('\r\n')}\r\n`);
+    total += page.length;
+    if (page.length < pageSize) return total;
+    before = page.at(-1)!.id;
+  }
+}
+
 const csvCell = (v: unknown): string => {
   const s = v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v);
   // Quote everything; neutralise spreadsheet formulas (CSV injection).
@@ -90,21 +120,17 @@ export function auditRouter({ db }: { db: Db }): Router {
     res.json({ entries, next: entries.length === q.limit ? entries.at(-1)!.id : null });
   });
 
-  // Export (design system 6.11): one line per changed field, up to 10 000 entries.
+  // Export (design system 6.11): all matching entries, streamed page by page in one transaction.
   router.get('/audit.csv', async (req, res) => {
     const q = AuditQuery.parse({ ...req.query, limit: undefined });
-    const entries = await withContext(db, contextOf(req), (tx) => query(tx, { ...q, limit: 10_000 }));
-    const lines = [['Time (UTC)', 'User', 'Role', 'Action', 'Operation', 'Table', 'Record', 'Field', 'Old value', 'New value', 'Reason'].map(csvCell).join(',')];
-    for (const e of entries) {
-      const base = [e.occurredAt, e.actorName ?? e.actorId, e.actorRole, e.action, e.op, e.table, e.recordId];
-      const changes = e.changes.length ? e.changes : [{ field: '', old: null, new: null }];
-      for (const c of changes) lines.push([...base, c.field, c.old, c.new, e.reason].map(csvCell).join(','));
-    }
     res
       .set('Content-Type', 'text/csv; charset=utf-8')
       .set('Content-Disposition', 'attachment; filename="audit-trail.csv"')
-      .set('Cache-Control', 'no-store')
-      .send(`﻿${lines.join('\r\n')}\r\n`);
+      .set('Cache-Control', 'no-store');
+    await withContext(db, contextOf(req), (tx) =>
+      exportAuditCsv((before) => query(tx, { ...q, before: before ?? q.before, limit: CSV_PAGE }), (chunk) => res.write(chunk)),
+    );
+    res.end();
   });
 
   return router;
