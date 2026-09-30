@@ -68,7 +68,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | Routes | `GET/POST /api/v1/installations/:id/periods`, `GET/PATCH /periods/:id`, `POST /periods/:id/versions`, `POST /periods/:id/clone`, `POST /period-versions/:id/transitions` |
 | Tables | `reporting_period`, `period_version`, `period_status_change`; functions `app.assert_period_writable`, `app.register_period_table` (the lock every later period table attaches to) (migration `20260929000005_m03_periods.sql`) |
 | Screens | Reporting periods panel on the installation profile, Period overview (status, versions, history), open/clone/edit-dates and status dialogs |
-| Review | `docs/reviews/M03.md` (Ready; F1, F2 Medium open) |
+| Review | `docs/reviews/M03.md` (Ready; re-review: F1, F2, F4, F6 fixed) |
 
 ## M4 — as built
 
