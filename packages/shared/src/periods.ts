@@ -14,24 +14,30 @@ import { IsoDate } from './library';
 // Dates
 // ---------------------------------------------------------------------------
 
-const daysInMonth = (y: number, m: number) => {
-  const d = new Date(0);
-  d.setUTCFullYear(y, m, 0);
-  return d.getUTCDate();
-};
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 /**
- * Last day of the 12-month period that starts on `start` (M3-R2). Same arithmetic as the
- * database check `start + interval '1 year' - interval '1 day'`: one year on, with the day
- * clamped to the month's length (29 Feb → 28 Feb), then one day back.
+ * Last day of the 12-month period that starts on `start` (M3-R2): the day before the same
+ * date next year. A 29 February start ends on 28 February, so the next period starts on
+ * 1 March and periods tile without gaps (independent review M3 F4). Same arithmetic as the
+ * database check `reporting_period_twelve_months`.
  */
 export function periodEndDate(start: string): string {
   const [y, m, d] = start.split('-').map(Number) as [number, number, number];
+  if (m === 2 && d === 29) return `${String(y + 1).padStart(4, '0')}-02-28`;
   // setUTCFullYear, not Date.UTC: Date.UTC maps years 0–99 to 1900–1999 (review M3 F2).
   const next = new Date(0);
-  next.setUTCFullYear(y + 1, m - 1, Math.min(d, daysInMonth(y + 1, m)));
+  next.setUTCFullYear(y + 1, m - 1, d);
   next.setUTCDate(next.getUTCDate() - 1);
-  return next.toISOString().slice(0, 10);
+  return isoDay(next);
+}
+
+/** Start of the period that follows one ending on `end`: the next day (clone default). */
+export function nextPeriodStart(end: string): string {
+  const [y, m, d] = end.split('-').map(Number) as [number, number, number];
+  const next = new Date(0);
+  next.setUTCFullYear(y, m - 1, d + 1);
+  return isoDay(next);
 }
 
 /**

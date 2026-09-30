@@ -255,6 +255,9 @@ export function periodsRouter({ db, hooks = emptyPeriodHooks() }: { db: Db; hook
     const input = PeriodInput.parse(req.body);
     const period = await withContext(db, contextOf(req, 'Save period dates'), async (tx) => {
       await loadPeriod(tx, id, true);
+      // Share-lock the versions so a status change cannot slip in between this check and the
+      // update (independent review M3 F1); the database guard takes the same lock.
+      await tx.selectFrom('period_version').select('id').where('period_id', '=', id).forShare().execute();
       const current = await periodDetail(tx, id);
       if (!current.datesEditable) {
         throw new AppError(409, 'locked', 'The dates are fixed once the period is submitted for review or has a second version.');

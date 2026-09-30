@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PeriodInput, PeriodTransitionRequest, periodActionsFor, periodEndDate, periodLabel } from './periods';
+import { PeriodInput, PeriodTransitionRequest, nextPeriodStart, periodActionsFor, periodEndDate, periodLabel } from './periods';
 
 describe('M3-R2 period dates', () => {
   it('a period is 12 months', () => {
@@ -9,9 +9,16 @@ describe('M3-R2 period dates', () => {
     expect(periodEndDate('2026-07-15')).toBe('2027-07-14');
   });
 
-  it('matches the database for 29 February (clamped to 28 February, then one day back)', () => {
-    // select ('2028-02-29'::date + interval '1 year' - interval '1 day')::date → 2029-02-27
-    expect(periodEndDate('2028-02-29')).toBe('2029-02-27');
+  it('a 29 February start ends on 28 February, and the next period starts on 1 March (independent review M3 F4)', () => {
+    expect(periodEndDate('2028-02-29')).toBe('2029-02-28');
+    expect(nextPeriodStart('2029-02-28')).toBe('2029-03-01');
+    expect(periodEndDate('2029-03-01')).toBe('2030-02-28');
+  });
+
+  it('the next period starts the day after the last one ends', () => {
+    expect(nextPeriodStart('2026-12-31')).toBe('2027-01-01');
+    expect(nextPeriodStart('2027-03-31')).toBe('2027-04-01');
+    expect(nextPeriodStart('2028-02-28')).toBe('2028-02-29');
   });
 
   it('calendar year needs no justification; other periods do', () => {

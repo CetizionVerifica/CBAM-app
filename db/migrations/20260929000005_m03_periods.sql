@@ -28,9 +28,13 @@ create table reporting_period (
   updated_by       uuid not null,
   foreign key (installation_id, client_id, tenant_id) references installation (id, client_id, tenant_id),
   unique (id, installation_id, client_id, tenant_id),
-  -- M3-R2: always 12 months. Same arithmetic as periodEndDate() in packages/shared.
+  -- M3-R2: always 12 months: the day before the same date next year. A 29 February start
+  -- ends on 28 February, so the next period starts on 1 March and periods tile without gaps
+  -- (independent review M3 F4). Same arithmetic as periodEndDate() in packages/shared.
   constraint reporting_period_twelve_months
-    check (end_date = (start_date + interval '1 year' - interval '1 day')::date),
+    check (end_date = case when extract(month from start_date) = 2 and extract(day from start_date) = 29
+                           then (start_date + interval '1 year')::date
+                           else (start_date + interval '1 year' - interval '1 day')::date end),
   -- CBAM reporting began in Oct 2023; later than 2100 is a typing error (review M3 F2).
   -- Same bounds as PERIOD_START_MIN/MAX in packages/shared.
   constraint reporting_period_range
@@ -133,7 +137,7 @@ begin
     -- Versions are numbered 1, 2, 3…; a new one needs the previous one issued (M3-R5).
     -- FOR UPDATE serialises two concurrent "create new version" requests.
     perform 1 from reporting_period where id = new.period_id for update;
-    select id, status into v_prev from period_version
+    select id, status, library_version_id, template_version_id into v_prev from period_version
      where period_id = new.period_id and version_no = new.version_no - 1;
     if new.version_no > 1 and v_prev.status is distinct from 'issued' then
       raise exception 'A new version needs the previous version to be issued'
@@ -145,6 +149,13 @@ begin
     -- Version n+1 is based on version n of the same period (review M3 F4).
     if new.version_no > 1 and new.based_on_version_id is distinct from v_prev.id then
       raise exception 'Version % must be based on version % of the same period', new.version_no, new.version_no - 1
+        using errcode = 'check_violation';
+    end if;
+    -- …and keeps version n's pins (D14; independent review M3 F2).
+    if new.version_no > 1
+       and (new.library_version_id, new.template_version_id)
+           is distinct from (v_prev.library_version_id, v_prev.template_version_id) then
+      raise exception 'Version % must keep the library and template versions of version %', new.version_no, new.version_no - 1
         using errcode = 'check_violation';
     end if;
     perform app.assert_library_published(new.library_version_id);
@@ -169,6 +180,9 @@ begin
     if old.status <> 'draft' then
       raise exception 'Pinned versions change only while the period is a draft'
         using errcode = 'object_not_in_prerequisite_state';
+    end if;
+    if v_role not in ('platform_admin', 'consultant') then
+      raise exception 'Your role cannot change the pinned versions' using errcode = 'insufficient_privilege';
     end if;
     perform app.assert_library_published(new.library_version_id);
   end if;
@@ -257,11 +271,24 @@ create function app.guard_reporting_period() returns trigger
   language plpgsql
   as $$
 begin
+  -- A period only goes on a live installation of a live client (independent review M3 F7).
+  if tg_op = 'INSERT' then
+    if not exists (select 1 from installation i join client c on c.id = i.client_id
+                    where i.id = new.installation_id and i.deleted_at is null and c.deleted_at is null) then
+      raise exception 'A reporting period needs a live installation' using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
   if tg_op = 'DELETE' then
     raise exception 'A reporting period cannot be deleted' using errcode = 'object_not_in_prerequisite_state';
   end if;
   if (new.tenant_id, new.client_id, new.installation_id) is distinct from (old.tenant_id, old.client_id, old.installation_id) then
     raise exception 'A reporting period cannot be moved to another installation' using errcode = 'check_violation';
+  end if;
+  if (new.start_date, new.end_date, new.justification) is distinct from (old.start_date, old.end_date, old.justification) then
+    -- Lock the versions first: a status change in progress finishes before the check below,
+    -- and none can start until this transaction ends (independent review M3 F1).
+    perform 1 from period_version where period_id = old.id for share;
   end if;
   if (new.start_date, new.end_date, new.justification) is distinct from (old.start_date, old.end_date, old.justification)
      and exists (select 1 from period_version v
@@ -271,7 +298,7 @@ begin
   return new;
 end
 $$;
-create trigger guard_reporting_period before update or delete on reporting_period
+create trigger guard_reporting_period before insert or update or delete on reporting_period
   for each row execute function app.guard_reporting_period();
 
 -- M2-R6 / M2 AT3: an installation with reporting periods cannot be deleted.
@@ -297,8 +324,9 @@ create trigger installation_keep_with_periods before update of deleted_at on ins
 -- ---------------------------------------------------------------------------
 
 -- SECURITY DEFINER (owned by cbam_auth, BYPASSRLS): row locks need the UPDATE policy,
--- which data contributors do not pass, but their writes must still be checked. It only
--- ever answers for the one version id it is given.
+-- which data contributors do not pass, but their writes must still be checked. A version
+-- outside the caller's tenant or installations counts as nonexistent, so the function
+-- reveals no other client's status (independent review M3 F6).
 create function app.assert_period_writable(p_period_version_id uuid) returns void
   language plpgsql
   security definer
@@ -308,7 +336,11 @@ declare
   v_status text;
 begin
   -- FOR SHARE: waits for a status change in progress, then sees the new status.
-  select status into v_status from period_version where id = p_period_version_id for share;
+  select status into v_status from period_version
+   where id = p_period_version_id
+     and tenant_id = app.current_tenant_id()
+     and app.installation_visible(client_id, installation_id)
+     for share;
   if v_status is null then
     raise exception 'Period version % does not exist', p_period_version_id using errcode = 'foreign_key_violation';
   end if;

@@ -147,6 +147,13 @@ describe('period overview', () => {
     expect(await screen.findByText('This period is approved and read-only. A consultant can return it to draft.')).toBeInTheDocument();
   });
 
+  it('cloning a 29 February period suggests the next day, 1 March (independent review M3 F4)', async () => {
+    renderPeriod('consultant', period({ startDate: '2028-02-29', endDate: '2029-02-28', justification: 'Plant commissioned 29 Feb' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Clone to Mar 2029 – Feb 2030' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Start date')).toHaveValue('2029-03-01');
+  });
+
   it('an issued version is locked and offers a new version', async () => {
     const issued = period({
       versions: [version({ status: 'issued', approvedAt: '2026-09-29T11:00:00Z', issuedAt: '2026-09-29T12:00:00Z' })],

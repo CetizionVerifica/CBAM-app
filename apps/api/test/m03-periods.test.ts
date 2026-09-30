@@ -168,6 +168,65 @@ describe('M3-R2 calendar year by default, other 12-month periods with a justific
     await expect(insert('2030-04-01', '2031-03-31', '   ')).rejects.toMatchObject({ constraint: 'reporting_period_justified' });
   });
 
+  it('a date edit and "Submit for review" at the same time cannot both succeed (independent review M3 F1)', async () => {
+    const p = await openPeriod(await newInstallation());
+    const v = p.versions[0]!.id;
+    // T1 edits the dates and holds its transaction open; T2 submits meanwhile.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let edited!: () => void;
+    const didEdit = new Promise<void>((r) => (edited = r));
+    const t1 = withContext(t.db, ctxOf(consultant, 'consultant'), async (tx) => {
+      await tx
+        .updateTable('reporting_period')
+        .set({ start_date: '2027-01-01', end_date: '2027-12-31' })
+        .where('id', '=', p.id)
+        .execute();
+      edited();
+      await held;
+    });
+    await didEdit;
+    let submitted = false;
+    const t2 = move(consultant.a, v, 'submit').then((r) => {
+      submitted = true;
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(submitted, 'the submit must wait for the date edit').toBe(false);
+    release();
+    await t1;
+    expect((await t2).status).toBe(200);
+    // The submit came after the edit, so the new dates were made while still a draft.
+    const detail = (await consultant.a.get(api(`/periods/${p.id}`))).body.period;
+    expect([detail.startDate, detail.versions[0].status]).toEqual(['2027-01-01', 'in_review']);
+    // Once submitted, the dates can no longer change.
+    await expect(
+      withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+        tx.updateTable('reporting_period').set({ start_date: '2028-01-01', end_date: '2028-12-31' }).where('id', '=', p.id).execute(),
+      ),
+    ).rejects.toMatchObject({ code: '55000' });
+  });
+
+  it('a 29 February start ends on 28 February (independent review M3 F4)', async () => {
+    const p = await openPeriod(await newInstallation(), { startDate: '2028-02-29', endDate: '2029-02-28', justification: 'Plant commissioned 29 Feb' });
+    expect((await consultant.a.get(api(`/periods/${p.id}`))).body.period.endDate).toBe('2029-02-28');
+    const short = await consultant.a.post(api(`/installations/${instB}/periods`), { startDate: '2032-02-29', endDate: '2033-02-27', justification: 'x' });
+    expect(short.status).toBe(400);
+  });
+
+  it('the database refuses a period on a deleted installation (independent review M3 F7)', async () => {
+    const inst = await newInstallation();
+    expect((await consultant.a.delete(api(`/installations/${inst}`))).status).toBe(204);
+    await expect(
+      withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+        tx
+          .insertInto('reporting_period')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, installation_id: inst, start_date: '2026-01-01', end_date: '2026-12-31' } as never)
+          .execute(),
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
   it('start dates outside 2023–2100 are a 400 with a field message, never a 500 (review M3 F2)', async () => {
     for (const body of [
       { startDate: '0050-01-01', endDate: '0050-12-31' },
@@ -384,6 +443,28 @@ describe('M3-R4 approved and issued periods are read-only (G4)', () => {
     await expect(withContext(t.db, ctxOf(outsider, 'consultant'), (tx) => assertPeriodWritable(tx, v))).rejects.toMatchObject({ status: 404 });
   });
 
+  it('the lock check reveals nothing about versions the caller cannot see (independent review M3 F6)', async () => {
+    const p = await openPeriod(await newInstallation());
+    const v = p.versions[0]!.id;
+    await issue(v);
+    const otherTenant = await adminOfNewTenant(t);
+    const check = (id: string) =>
+      withContext(t.db, { tenantId: otherTenant.tenantId, userId: otherTenant.adminId, userRole: 'platform_admin', requestId: randomUUID() }, (tx) =>
+        sql`select app.assert_period_writable(${id})`.execute(tx),
+      ).then(
+        () => 'ok',
+        (e: { code: string }) => e.code,
+      );
+    expect(await check(v)).toBe('23503');
+    expect(await check(randomUUID())).toBe('23503');
+    // Same tenant, not on the client: also nothing.
+    const outsiderCheck = await withContext(t.db, ctxOf(outsider, 'consultant'), (tx) => sql`select app.assert_period_writable(${v})`.execute(tx)).then(
+      () => 'ok',
+      (e: { code: string }) => e.code,
+    );
+    expect(outsiderCheck).toBe('23503');
+  });
+
   it('an approved version row itself cannot change except by a status step', async () => {
     const p = await openPeriod(await newInstallation());
     const v = p.versions[0]!.id;
@@ -458,6 +539,40 @@ describe('M3-R5 changes after issue go into version n+1', () => {
     await expect(insertV2(other.versions[0]!.id)).rejects.toMatchObject({ code: '23514' });
     await expect(insertV2(null)).rejects.toMatchObject({ code: '23514' });
     await expect(insertV2(v1)).resolves.toBeDefined();
+  });
+
+  it('pins: version n+1 keeps version n’s, and only admins and consultants change a draft’s (independent review M3 F2)', async () => {
+    // A second, older template, so it never becomes the one new periods pin.
+    const other = await t.su.transaction().execute(async (tx) => {
+      await sql`select set_config('app.user_id', ${admin.adminId}, true)`.execute(tx);
+      const { rows } = await sql<{ id: string }>`
+        insert into template_version (code, title, file_name, file_sha256, released_on, source)
+        values (${`test-${randomUUID().slice(0, 8)}`}, 'Test template', 'test.xlsx', ${'0'.repeat(64)}, '2000-01-01', 'M3 test')
+        returning id`.execute(tx);
+      return rows[0]!.id;
+    });
+
+    const draft = await openPeriod(await newInstallation());
+    const repin = (u: { id: string }, role: UserRole) =>
+      withContext(t.db, ctxOf(u, role), (tx) =>
+        tx.updateTable('period_version').set({ template_version_id: other }).where('id', '=', draft.versions[0]!.id).execute(),
+      );
+    await expect(repin(reviewer, 'reviewer')).rejects.toMatchObject({ code: '42501' });
+
+    const p = await openPeriod(await newInstallation());
+    const v1 = p.versions[0]!.id;
+    await issue(v1);
+    const pins = await withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+      tx.selectFrom('period_version').select(['library_version_id', 'template_version_id']).where('id', '=', v1).executeTakeFirstOrThrow(),
+    );
+    await expect(
+      withContext(t.db, ctxOf(consultant, 'consultant'), (tx) =>
+        tx
+          .insertInto('period_version')
+          .values({ tenant_id: admin.tenantId, client_id: clientId, installation_id: p.installationId, period_id: p.id, version_no: 2, based_on_version_id: v1, ...pins, template_version_id: other } as never)
+          .execute(),
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
   });
 
   it('versions cannot be deleted', async () => {

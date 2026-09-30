@@ -4,6 +4,8 @@ import {
   type PeriodDetail,
   can,
   isPeriodLocked,
+  nextPeriodStart,
+  periodEndDate,
   periodActionsFor,
   periodLabel,
 } from '@cbam/shared';
@@ -30,8 +32,6 @@ const TOAST: Record<PeriodAction, string> = {
   issue: 'Period issued',
   reopen: 'Returned to draft',
 };
-
-const nextYearStart = (start: string) => `${Number(start.slice(0, 4)) + 1}${start.slice(4)}`;
 
 /** Period overview (design system 6.3): status, versions, pinned library and template, history. */
 export function PeriodPage() {
@@ -68,6 +68,8 @@ export function PeriodPage() {
   const isLatest = version.id === latest.id;
   const locked = isPeriodLocked(version.status);
   const canManage = can(me.user.role, 'periods.manage');
+  // The period right after this one, so clones tile without gaps.
+  const cloneStart = nextPeriodStart(p.endDate);
   const actions = isLatest ? periodActionsFor(me.user.role, version.status) : [];
 
   const update = (next: PeriodDetail) => {
@@ -130,7 +132,7 @@ export function PeriodPage() {
           actions={
             <>
               {canManage && p.datesEditable && <Button onClick={() => setDialog({ kind: 'dates' })}>Edit period dates</Button>}
-              {canManage && <Button onClick={() => setDialog({ kind: 'clone' })}>Clone to {periodLabel(nextYearStart(p.startDate), nextYearStart(p.endDate))}</Button>}
+              {canManage && <Button onClick={() => setDialog({ kind: 'clone' })}>Clone to {periodLabel(cloneStart, periodEndDate(cloneStart))}</Button>}
               {actions.map((a) => (
                 <Button
                   key={a}
@@ -269,7 +271,7 @@ export function PeriodPage() {
           title={`Clone ${label}`}
           description="The new period gets this period’s set-up (processes, source streams, CN codes) but no activity data, and uses the current library and template versions."
           submitLabel="Clone period"
-          initial={{ startDate: nextYearStart(p.startDate), justification: p.justification }}
+          initial={{ startDate: cloneStart, justification: p.justification }}
           onClose={() => setDialog(null)}
           onSubmit={async (input) => {
             const { period: next } = await api.post<{ period: PeriodDetail }>(`/periods/${periodId}/clone`, input);
