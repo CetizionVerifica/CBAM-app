@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { sql } from 'kysely';
 import { z } from 'zod';
 import {
   type AffectedRecord,
   ConfirmQuery,
+  Decimal,
   CreateProcessRequest,
   GoodDataRequest,
   GoodInput,
@@ -24,6 +26,7 @@ import { AppError } from '../../platform/errors';
 import { assertPeriodWritable } from '../m03-periods';
 import {
   type ProcessDependents,
+  type SetupChange,
   evidenceAffected,
   goodAffected,
   removeEvidenceLinks,
@@ -85,6 +88,9 @@ function checkSetup(library: GoodsCategoryEntry[], v: SetupInput): Issue[] {
     if (!c || !precursors.has(inc.code)) {
       issues.push({ path: ['includedCategories', i, 'code'], message: `Choose a relevant precursor of ${main.name}.` });
       return;
+    }
+    if (c.routeRelevant && inc.routeCodes.length === 0) {
+      issues.push({ path: ['includedCategories', i, 'routeCodes'], message: `Choose the routes ${c.name} is made by.` });
     }
     inc.routeCodes.forEach((r, j) => {
       if (!c.routes.some((x) => x.code === r)) {
@@ -255,10 +261,11 @@ export function processesRouter({ db, dependents = [] }: { db: Db; dependents?: 
   router.patch('/processes/:id', configure, async (req, res) => {
     const id = idParam(req.params.id, 'process');
     const input = UpdateProcessRequest.parse(req.body);
-    const categoryChange = input.goodsCategoryCode !== undefined;
-    const process = await withContext(db, contextOf(req, categoryChange ? 'Change goods category' : 'Save process'), async (tx) => {
+    const process = await withContext(db, contextOf(req, 'Save process'), async (tx) => {
       const row = await loadProcessRow(tx, id, true);
       await assertPeriodWritable(tx, row.period_version_id);
+      // Same lock as adding a process: the category count below cannot race (review M5 F3).
+      await tx.selectFrom('period_version').select('id').where('id', '=', row.period_version_id).forNoKeyUpdate().execute();
       const current = await loadProcessDetail(tx, id);
       const { library } = await loadVersionProcesses(tx, row.period_version_id, id);
       const newCat = input.goodsCategoryCode ?? row.goods_category_code;
@@ -285,8 +292,12 @@ export function processesRouter({ db, dependents = [] }: { db: Db; dependents?: 
       const unitChanged = changed && newCatEntry!.unit !== oldUnit;
       const droppedGoods = changed ? current.goods : [];
       const droppedIncluded = current.includedCategories.filter((c) => !next.includedCategories.some((n) => n.code === c.code));
+      const change: SetupChange = { categoryChanged: changed, droppedRouteCodes: droppedRoutes.map((r) => r.routeCode) };
+      const setupChanges = changed || droppedRoutes.length > 0;
       const affected: AffectedRecord[] = [
         ...routeAffected(current, new Set(droppedRoutes.map((r) => r.id))),
+        // Later modules' records tied to the category or a dropped route (review M5 F6).
+        ...(setupChanges ? (await Promise.all(dependents.map((d) => d.affectedBy?.(tx, id, change) ?? []))).flat() : []),
         ...droppedGoods.flatMap((g) => goodAffected(g, [], true)),
         ...(await evidenceAffected(tx, droppedGoods.map((g) => ({ table: 'process_good' as const, id: g.id })))),
         ...(changed ? droppedIncluded.map((c) => ({ table: 'process_included_category', id: c.code, label: `Included goods category: ${c.name}` })) : []),
@@ -298,6 +309,10 @@ export function processesRouter({ db, dependents = [] }: { db: Db; dependents?: 
           : []),
       ];
       requireConfirmation(affected, input.confirm, changed ? 'Changing the goods category' : 'Removing these routes');
+      // The audit action names what happened (D22; review M5 F9).
+      const action = changed ? 'Change goods category' : droppedRoutes.length ? 'Remove route' : 'Save process';
+      await sql`select set_config('app.action', ${action}, true)`.execute(tx);
+      if (setupChanges) for (const d of dependents) await d.applyChange?.(tx, id, change);
 
       await removeEvidenceLinks(tx, droppedGoods.map((g) => ({ table: 'process_good' as const, id: g.id })));
       if (droppedGoods.length) await tx.deleteFrom('process_good').where('id', 'in', droppedGoods.map((g) => g.id)).execute();
@@ -357,6 +372,9 @@ export function processesRouter({ db, dependents = [] }: { db: Db; dependents?: 
         ...(await Promise.all(dependents.map((d) => d.list(tx, id)))).flat(),
       ];
       requireConfirmation(affected, confirm, 'Deleting this process');
+      // Processes feeding this one lose that consumption, so their balance changes (review M5 F2).
+      const suppliers = await tx.selectFrom('process_internal_use').select('process_id').where('consumer_process_id', '=', id).execute();
+      for (const s of suppliers) await backToDraft(tx, s.process_id);
       for (const d of dependents) await d.remove(tx, id);
       await removeEvidenceLinks(tx, records);
       await tx.deleteFrom('production_process').where('id', '=', id).execute();
@@ -560,9 +578,13 @@ export function processesRouter({ db, dependents = [] }: { db: Db; dependents?: 
         if (v.text === null && v.quantity === null) return;
         if (d.valueKind === 'number') {
           if (!v.quantity) return issues.push({ path: [...path, 'quantity'], message: `Enter a number for ${d.name}.` });
-          const dim = normaliseQuantity(v.quantity).siUnit === 't/t' ? 'mass_ratio' : 'fraction';
+          const n = normaliseQuantity(v.quantity);
+          const dim = n.siUnit === 't/t' ? 'mass_ratio' : 'fraction';
           if (dim !== d.dimension) {
             issues.push({ path: [...path, 'quantity', 'unit'], message: d.dimension === 'mass_ratio' ? 'Enter this as t/t or kg/t.' : 'Enter this as % or a fraction.' });
+          } else if (dim === 'fraction' && new Decimal(n.si).gt(1)) {
+            // A share of the product cannot exceed 100 % (review M5 F4).
+            issues.push({ path: [...path, 'quantity', 'value'], message: `${d.name} cannot be more than 100 %.` });
           }
         } else if (v.text === null) {
           issues.push({ path: [...path, 'text'], message: `Enter ${d.name}.` });

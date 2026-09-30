@@ -10,16 +10,27 @@ export interface QuantityDraft {
   unit: string;
   provenance: Provenance;
   source: string;
+  /** Library entry a default value came from; kept so a stored default saves unchanged (review M5 F11). */
+  defaultRef?: string;
 }
 
 export const emptyDraft = (unit: string): QuantityDraft => ({ value: '', unit, provenance: 'measured', source: '' });
 
 export const draftFrom = (a: StoredAmount | null, unit: string): QuantityDraft =>
-  a ? { value: a.value, unit: a.unit, provenance: a.provenance, source: a.source } : emptyDraft(unit);
+  a ? { value: a.value, unit: a.unit, provenance: a.provenance, source: a.source, ...(a.defaultRef && { defaultRef: a.defaultRef }) } : emptyDraft(unit);
 
 /** Empty value means "not entered" (null); anything else goes to the API as typed. */
 export const draftToInput = (d: QuantityDraft) =>
-  d.value.trim() === '' ? null : { value: d.value.trim(), unit: d.unit, provenance: d.provenance, source: d.source.trim() };
+  d.value.trim() === ''
+    ? null
+    : {
+        value: d.value.trim(),
+        unit: d.unit,
+        provenance: d.provenance,
+        source: d.source.trim(),
+        // Only a default value carries its library reference.
+        ...(d.provenance === 'default' && d.defaultRef && { defaultRef: d.defaultRef }),
+      };
 
 const PROVENANCE: Record<Provenance, { label: string; icon: LucideIcon }> = {
   measured: { label: 'Measured', icon: Gauge },

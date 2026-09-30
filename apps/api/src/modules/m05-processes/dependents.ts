@@ -5,11 +5,20 @@ import { AppError } from '../../platform/errors';
 /**
  * Records of later modules that hang off a process (M6 source streams, M7 energy flows, M8
  * precursors, M9 carbon prices). Each module registers one, so deleting a process lists them
- * and removes them only after confirmation (M5-R6, D22).
+ * and removes them only after confirmation (M5-R6, D22). A module whose records depend on the
+ * category or a route also answers `affectedBy` and `applyChange` for set-up changes (M5-R5).
  */
+export interface SetupChange {
+  categoryChanged: boolean;
+  /** Routes the change removes; null is the single row of a category without routes. */
+  droppedRouteCodes: (string | null)[];
+}
+
 export interface ProcessDependents {
   list(tx: Tx, processId: string): Promise<AffectedRecord[]>;
   remove(tx: Tx, processId: string): Promise<void>;
+  affectedBy?(tx: Tx, processId: string, change: SetupChange): Promise<AffectedRecord[]>;
+  applyChange?(tx: Tx, processId: string, change: SetupChange): Promise<void>;
 }
 
 const fmt = (v: string) => new Intl.NumberFormat('en-GB', { maximumFractionDigits: 3 }).format(new Decimal(v).toString() as unknown as number);

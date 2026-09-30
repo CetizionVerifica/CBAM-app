@@ -111,8 +111,21 @@ describe('other checks', () => {
     );
     expect(checks.map((c) => [c.ruleId, c.severity])).toEqual([
       ['M5-C07', 'warning'],
-      ['M5-C06', 'warning'],
+      ['M5-C06', 'critical'],
     ]);
+  });
+
+  it('review F1: a missing internal-use amount blocks completion even when goods exceed production', () => {
+    const checks = processChecks(
+      base({ goods: [{ ...base().goods[0]!, producedSi: '1200' }], internalUses: [{ id: 'u1', consumerName: 'Rolling', amountSi: null }] }),
+    );
+    expect(checks.map((c) => c.ruleId)).toEqual(['M5-C06']);
+    expect(canComplete(checks)).toBe(false);
+  });
+
+  it('only sales above production is a warning that does not block', () => {
+    const checks = processChecks(base({ goods: [{ ...base().goods[0]!, soldEuSi: '800', soldOtherSi: '300' }] }));
+    expect(checks.map((c) => [c.ruleId, c.severity])).toEqual([['M5-C07', 'warning']]);
     expect(canComplete(checks)).toBe(true);
   });
 });
@@ -132,6 +145,12 @@ describe('request schemas', () => {
     expect(both.success).toBe(false);
     const wrongUnit = GoodDataRequest.safeParse({ produced: null, soldEu: null, soldOther: null, parameters: [{ position: 3, quantity: q }] });
     expect(wrongUnit.success).toBe(false);
+  });
+  it('review F4, F5, F8: negative parameters, long sources and repeated routes are refused', () => {
+    expect(GoodDataRequest.safeParse({ produced: null, soldEu: null, soldOther: null, parameters: [{ position: 3, quantity: { ...q, unit: '%', value: '-1' } }] }).success).toBe(false);
+    expect(ProductionRequest.safeParse({ routes: [], nonCbam: { ...q, source: 'x'.repeat(501) }, internalUses: [] }).success).toBe(false);
+    const id = '9b2f7c1e-4d3a-4e8b-9c6d-2a1b3c4d5e6f';
+    expect(ProductionRequest.safeParse({ routes: [{ routeId: id, amount: q }, { routeId: id, amount: q }], nonCbam: null, internalUses: [] }).success).toBe(false);
   });
   it('an update must change something besides confirm', () => {
     expect(UpdateProcessRequest.safeParse({ confirm: true }).success).toBe(false);

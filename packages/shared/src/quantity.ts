@@ -19,7 +19,7 @@ export function quantityInput(dimension: Dimension | readonly Dimension[]) {
           message: `Unit must be one of: ${allowed.join(', ')}.`,
         }),
       provenance: Provenance,
-      source: z.string().trim().min(1, 'Enter the data source.'),
+      source: z.string().trim().min(1, 'Enter the data source.').max(500, 'Use at most 500 characters.'),
       defaultRef: z.uuid().optional(),
     })
     .refine((q) => q.provenance !== 'default' || q.defaultRef !== undefined, {

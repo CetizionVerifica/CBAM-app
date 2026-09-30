@@ -2,13 +2,29 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ProcessDetail, ProcessList, UserRole } from '@cbam/shared';
+import type { ProcessDependents } from '../src/modules/m05-processes';
 import { type RequestContext, withContext } from '../src/platform/db';
 import { type TestAgent, WEB_ORIGIN, adminOfNewTenant, inviteAndAccept, signIn, signInWithMfa, testApp } from './helpers';
 
 // M5 — Process and goods set-up (docs/plans/phase-2.md, D16–D23).
 // Requirement IDs from .claude/skills/cbam-module-reviewer/references/modules/M05-process-goods.md
 
-const t = testApp();
+// A stand-in for M6: source streams tied to a route of the process (review M5 F6).
+const streams = new Map<string, { route: string; removed: boolean }>();
+const fakeM6: ProcessDependents = {
+  list: async (_tx, id) => (streams.has(id) ? [{ table: 'source_stream', id, label: 'Source stream: Anode carbon' }] : []),
+  remove: async (_tx, id) => void streams.delete(id),
+  affectedBy: async (_tx, id, change) => {
+    const s = streams.get(id);
+    return s && (change.categoryChanged || change.droppedRouteCodes.includes(s.route)) ? [{ table: 'source_stream', id, label: 'Source stream: Anode carbon' }] : [];
+  },
+  applyChange: async (_tx, id) => {
+    const s = streams.get(id);
+    if (s) s.removed = true;
+  },
+};
+
+const t = testApp({ processDependents: [fakeM6] });
 
 type User = { a: TestAgent; id: string; email: string };
 let admin: Awaited<ReturnType<typeof adminOfNewTenant>>;
@@ -274,6 +290,105 @@ describe('M5-R3 production balance (D17, D19, D20)', () => {
     expect(noRef.status).toBe(400);
     const { rows } = await sql<{ amount_value: string; amount_si: string }>`select amount_value, amount_si from process_route where id = ${p.routes[0]!.id}`.execute(t.su);
     expect(rows[0]).toEqual({ amount_value: '1.5', amount_si: '1500' });
+  });
+});
+
+describe('independent review M5: fixes', () => {
+  it('F1: an internal use without an amount blocks completion, so goods above production cannot slip through', async () => {
+    const { versionId } = await openVersion();
+    const rolling = await createProcess(versionId, { name: 'Rolling mill', goodsCategoryCode: 'aluminium_products' });
+    const p = await balancedProcess(versionId);
+    await consultant.a.put(api(`/process-goods/${p.goods[0]!.id}/data`), { produced: q('1200'), soldEu: null, soldOther: null, parameters: ALU_PARAMS });
+    const prod = await consultant.a.put(api(`/processes/${p.id}/production`), {
+      routes: [{ routeId: p.routes[0]!.id, amount: q('1000') }], nonCbam: null, internalUses: [{ consumerProcessId: rolling.id, amount: null }],
+    });
+    expect((prod.body.process as ProcessDetail).checks).toMatchObject([{ ruleId: 'M5-C06', severity: 'critical' }]);
+    expect((await consultant.a.post(api(`/processes/${p.id}/complete`))).status).toBe(409);
+  });
+
+  it('F2: deleting a consuming process returns its complete suppliers to draft', async () => {
+    const { versionId } = await openVersion();
+    const rolling = await createProcess(versionId, { name: 'Rolling mill', goodsCategoryCode: 'aluminium_products' });
+    const p = await balancedProcess(versionId);
+    await consultant.a.put(api(`/process-goods/${p.goods[0]!.id}/data`), { produced: q('900'), soldEu: null, soldOther: null, parameters: ALU_PARAMS });
+    await consultant.a.put(api(`/processes/${p.id}/production`), {
+      routes: [{ routeId: p.routes[0]!.id, amount: q('1000') }], nonCbam: null, internalUses: [{ consumerProcessId: rolling.id, amount: q('100') }],
+    });
+    expect((await consultant.a.post(api(`/processes/${p.id}/complete`))).status).toBe(200);
+    expect((await consultant.a.delete(api(`/processes/${rolling.id}?confirm=true`))).status).toBe(204);
+    const after = (await consultant.a.get(api(`/processes/${p.id}`))).body.process as ProcessDetail;
+    expect(after).toMatchObject({ status: 'draft', internalUses: [] });
+    expect(after.checks.map((c) => c.ruleId)).toEqual(['M5-C05']);
+  });
+
+  it('F3: a category change and a new process at the same time cannot exceed ten categories', async () => {
+    const { versionId } = await openVersion();
+    const cats = ['cement', 'cement_clinker', 'calcined_clays', 'aluminous_cement', 'urea', 'aluminium_products', 'nitric_acid', 'dri', 'mixed_fertilisers'];
+    for (const c of cats) await createProcess(versionId, { name: `P ${c}`, goodsCategoryCode: c });
+    const second = await createProcess(versionId, { name: 'Second cement mill', goodsCategoryCode: 'cement' });
+    // 9 categories. Each request alone makes 10; together they would make 11.
+    const [patch, post] = await Promise.all([
+      consultant.a.patch(api(`/processes/${second.id}`), { goodsCategoryCode: 'iron_steel_products', confirm: true }),
+      consultant.a.post(api(`/period-versions/${versionId}/processes`), { name: 'Blast furnace', goodsCategoryCode: 'pig_iron', routeCodes: ['blast_furnace_route'] }),
+    ]);
+    expect([patch.status, post.status].filter((x) => x < 300)).toHaveLength(1);
+    const list = (await consultant.a.get(api(`/period-versions/${versionId}/processes`))).body as ProcessList;
+    expect(new Set(list.processes.map((x) => x.goodsCategory.code)).size).toBe(10);
+  });
+
+  it('F4: a share above 100 % or below zero is refused with a field message, not a 500', async () => {
+    const { versionId } = await openVersion();
+    const p = await createProcess(versionId, smelter);
+    const g = (await addGood(p.id)).goods[0]!;
+    const put = (quantity: object) => consultant.a.put(api(`/process-goods/${g.id}/data`), { produced: null, soldEu: null, soldOther: null, parameters: [{ position: 3, quantity }] });
+    const high = await put(q('150', '%'));
+    expect(high.status).toBe(400);
+    expect(high.body.error.issues).toEqual([{ path: ['parameters', 0, 'quantity', 'value'], message: '% non-aluminium elements cannot be more than 100 %.' }]);
+    expect((await put(q('-1', '%'))).status).toBe(400);
+    expect((await put(q('1', 'fraction'))).status).toBe(200);
+  });
+
+  it('F5: a data source over 500 characters is a field error, not a 500', async () => {
+    const { versionId } = await openVersion();
+    const p = await createProcess(versionId, smelter);
+    const res = await consultant.a.put(api(`/processes/${p.id}/production`), { routes: [{ routeId: p.routes[0]!.id, amount: q('1', 't', { source: 'x'.repeat(501) }) }], nonCbam: null, internalUses: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('F6: later modules list and handle their records when a route they use is removed', async () => {
+    const { versionId } = await openVersion();
+    const p = await createProcess(versionId, { ...smelter, routeCodes: ['primary_smelting', 'secondary_melting'] });
+    streams.set(p.id, { route: 'primary_smelting', removed: false });
+    const warn = await consultant.a.patch(api(`/processes/${p.id}`), { routeCodes: ['secondary_melting'] });
+    expect(warn.status).toBe(409);
+    expect(warn.body.error.details.affected).toEqual([{ table: 'source_stream', id: p.id, label: 'Source stream: Anode carbon' }]);
+    expect(streams.get(p.id)!.removed).toBe(false);
+    expect((await consultant.a.patch(api(`/processes/${p.id}`), { routeCodes: ['secondary_melting'], confirm: true })).status).toBe(200);
+    expect(streams.get(p.id)!.removed).toBe(true);
+    // Deleting the process lists them too.
+    const del = await consultant.a.delete(api(`/processes/${p.id}`));
+    expect(del.body.error.details.affected.map((x: { table: string }) => x.table)).toEqual(['source_stream']);
+    expect((await consultant.a.delete(api(`/processes/${p.id}?confirm=true`))).status).toBe(204);
+    expect(streams.has(p.id)).toBe(false);
+  });
+
+  it('F9: the audit action names what happened', async () => {
+    const { versionId } = await openVersion();
+    const p = await balancedProcess(versionId);
+    await consultant.a.patch(api(`/processes/${p.id}`), { name: 'Potline A', goodsCategoryCode: 'unwrought_aluminium' });
+    await consultant.a.patch(api(`/processes/${p.id}`), { routeCodes: ['secondary_melting'], confirm: true });
+    const { rows } = await sql<{ action: string; op: string }>`
+      select action, op from audit.audit_log where record_id in (${p.id}, ${p.routes[0]!.id}) and op in ('UPDATE', 'DELETE') order by id`.execute(t.su);
+    expect(rows.map((r) => r.action)).toContain('Remove route');
+    expect(rows.map((r) => r.action)).not.toContain('Change goods category');
+  });
+
+  it('F10: an included category with routes must name at least one', async () => {
+    const { versionId } = await openVersion();
+    const res = await consultant.a.post(api(`/period-versions/${versionId}/processes`), {
+      name: 'Integrated', goodsCategoryCode: 'aluminium_products', includedCategories: [{ code: 'unwrought_aluminium', routeCodes: [] }],
+    });
+    expect(res.body.error.issues).toEqual([{ path: ['includedCategories', 0, 'routeCodes'], message: 'Choose the routes Unwrought aluminium is made by.' }]);
   });
 });
 

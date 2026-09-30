@@ -83,13 +83,17 @@ export const copyProcessSetup: PeriodCopier = async (tx, from, to) => {
         notes.push(`${p.name}: ${c?.name ?? inc.goods_category_code} is not a relevant precursor in library version ${libraryCode} and was not included.`);
         continue;
       }
+      const keptRoutes = inc.route_codes.filter((r) => c.routes.some((x) => x.code === r));
+      if (keptRoutes.length < inc.route_codes.length) {
+        notes.push(`${p.name}: routes of ${c.name} that are not in library version ${libraryCode} were not copied.`);
+      }
       await tx
         .insertInto('process_included_category')
         .values({
           ...scope,
           process_id: row.id,
           goods_category_code: inc.goods_category_code,
-          route_codes: inc.route_codes.filter((r) => c.routes.some((x) => x.code === r)),
+          route_codes: keptRoutes,
         } as never)
         .execute();
     }

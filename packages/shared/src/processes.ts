@@ -98,7 +98,10 @@ export type GoodPatch = z.infer<typeof GoodPatch>;
 
 /** D_Processes (a), (c), (d): production per route, consumption by other processes, non-CBAM. */
 export const ProductionRequest = z.object({
-  routes: z.array(z.object({ routeId: z.uuid(), amount: AmountInput.nullable() })).max(8),
+  routes: z
+    .array(z.object({ routeId: z.uuid(), amount: AmountInput.nullable() }))
+    .max(8)
+    .refine((r) => new Set(r.map((x) => x.routeId)).size === r.length, 'Give each route once.'),
   nonCbam: AmountInput.nullable(),
   internalUses: z
     .array(z.object({ consumerProcessId: z.uuid(), amount: AmountInput.nullable() }))
@@ -112,7 +115,10 @@ export const ParameterValueInput = z
   .object({
     position: z.number().int().min(1).max(8),
     text: z.string().trim().min(1).max(200).nullable().default(null),
-    quantity: quantityInput(QUALIFYING_DIMENSIONS).nullable().default(null),
+    quantity: quantityInput(QUALIFYING_DIMENSIONS)
+      .refine((q) => !new Decimal(q.value).isNegative(), { message: 'Enter zero or more.', path: ['value'] })
+      .nullable()
+      .default(null),
   })
   .refine((v) => v.text === null || v.quantity === null, 'Give text or a number, not both.');
 export type ParameterValueInput = z.infer<typeof ParameterValueInput>;
@@ -346,7 +352,8 @@ export function processChecks(p: ProcessFacts): ProcessCheck[] {
   }
   for (const u of p.internalUses) {
     if (u.amountSi === null) {
-      add('M5-C06', 'warning', `${p.name}: enter the amount consumed by ${u.consumerName}, or remove it.`, { type: 'process_internal_use', id: u.id });
+      // Critical: without it the balance (M5-C05) cannot be checked (review M5 F1).
+      add('M5-C06', 'critical', `${p.name}: enter the amount consumed by ${u.consumerName}, or remove it.`, { type: 'process_internal_use', id: u.id });
     }
   }
   const b = productionBalance(p);

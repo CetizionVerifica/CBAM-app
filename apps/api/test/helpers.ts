@@ -33,7 +33,7 @@ export function testConfig(): Config {
   };
 }
 
-export function testApp(extra: Pick<AppDeps, 'periodHooks'> = {}) {
+export function testApp(extra: Pick<AppDeps, 'periodHooks' | 'processDependents'> = {}) {
   const config = testConfig();
   const db = createDb(config.APP_DATABASE_URL);
   const owner = createDb(inject('ownerUrl'));
