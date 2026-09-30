@@ -620,3 +620,22 @@ describe('audit (G3)', () => {
     expect(rows[0]!.rows).toBe('[redacted]');
   });
 });
+
+describe('M13 AT3: an NCV edit in the audit trail', () => {
+  it('shows the old and new value and who changed it', async () => {
+    const draft = await newDraft();
+    const created = await admin.a.post(`/api/v1/library/versions/${draft.id}/factors`, {
+      kind: 'ncv', subject: `Coking coal ${randomUUID().slice(0, 4)}`, value: '28.2', unit: 'GJ/t', validFrom: '2026-01-01', source: 'IPCC 2006',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = created.body.factor.id as string;
+    expect((await admin.a.patch(`/api/v1/library/factors/${id}`, { value: '28.123456789012345678' })).status).toBe(200);
+    const res = await admin.a.get(`/api/v1/audit?recordId=${id}`);
+    expect(res.status).toBe(200);
+    const edit = res.body.entries[0];
+    expect(edit).toMatchObject({ op: 'UPDATE', table: 'public.library_factor', actorId: admin.adminId, actorName: 'Ada Admin' });
+    // Exact digits, not a float (G6).
+    expect(edit.changes).toEqual(expect.arrayContaining([{ field: 'value', old: '28.2', new: '28.123456789012345678' }]));
+    await admin.a.raw.delete(`/api/v1/library/versions/${draft.id}`).set('Origin', 'http://localhost:5173');
+  });
+});

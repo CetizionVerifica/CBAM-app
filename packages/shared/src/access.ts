@@ -43,6 +43,15 @@ export const PERMISSIONS = {
   // M3: open, clone and re-version reporting periods, and edit their dates. Status changes
   // have their own role lists (PERIOD_TRANSITIONS in periods.ts).
   'periods.manage': ['platform_admin', 'consultant'],
+  // M13: upload and link evidence; edit or delete any file (contributors: their own uploads).
+  'evidence.upload': ['platform_admin', 'consultant', 'contributor'],
+  'evidence.manage': ['platform_admin', 'consultant'],
+  // M13-R7: verifier details and opinion; approvals by the consultant and by a client user.
+  'verification.edit': ['platform_admin', 'consultant', 'reviewer'],
+  'verification.approveConsultant': ['platform_admin', 'consultant'],
+  'verification.approveClient': ['contributor', 'recipient'],
+  // M13-R5: audit trail (admins: whole tenant; others: their clients).
+  'audit.read': ['platform_admin', 'consultant', 'reviewer'],
 } as const satisfies Record<string, readonly UserRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

@@ -90,11 +90,18 @@ export function unconfiguredFileStore(): FileStore {
   return { put: async () => fail(), signedDownloadUrl: fail, delete: async () => fail() };
 }
 
-/** Keeps files in memory; used by tests. */
-export function memoryFileStore(): FileStore & { files: Map<string, Buffer> } {
+/** Keeps files in memory; used by tests. `open` follows a download link as Cloudinary does. */
+export function memoryFileStore(): FileStore & { files: Map<string, Buffer>; open(url: string): Buffer } {
   const files = new Map<string, Buffer>();
   return {
     files,
+    open(url) {
+      const u = new URL(url);
+      if (Date.now() / 1000 > Number(u.searchParams.get('expires'))) throw new AppError(401, 'expired', 'This download link has expired.');
+      const file = files.get(`${u.hostname}${u.pathname}`);
+      if (!file) throw new AppError(404, 'not_found', 'This file does not exist.');
+      return file;
+    },
     async put({ folder, fileName, body }) {
       const key = `${folder}/${randomUUID()}${extname(fileName).toLowerCase()}`;
       files.set(key, Buffer.from(body));

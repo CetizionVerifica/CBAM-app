@@ -8,8 +8,9 @@ import type { Logger } from 'pino';
 import type { Config } from './config';
 import { authRouter, usersRouter } from './modules/m01-access';
 import { registryRouter } from './modules/m02-registry/registry.router';
-import { type PeriodHooks, periodsRouter } from './modules/m03-periods';
+import { type PeriodHooks, emptyPeriodHooks, periodsRouter } from './modules/m03-periods';
 import { libraryRouter, overridesRouter } from './modules/m04-reference';
+import { auditRouter, copyPeriodEvidence, evidenceRouter, verificationRouter } from './modules/m13-evidence';
 import { authenticate, requireSameOrigin } from './platform/auth';
 import type { Db } from './platform/db';
 import { errorHandler, notFound } from './platform/errors';
@@ -23,11 +24,11 @@ export interface AppDeps {
   /** Evidence and report files (M12, M13); Cloudinary in dev and production, memory in tests. */
   files: FileStore;
   config: Config;
-  /** What later modules plug into the period life cycle (M3-R5, R6, R7); none yet. */
+  /** What modules plug into the period life cycle (M3-R5, R6, R7). Tests may replace it. */
   periodHooks?: PeriodHooks;
 }
 
-export function createApp({ db, logger, mailer, config, periodHooks }: AppDeps) {
+export function createApp({ db, logger, mailer, files, config, periodHooks }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.TRUST_PROXY);
@@ -64,9 +65,13 @@ export function createApp({ db, logger, mailer, config, periodHooks }: AppDeps) 
   api.use('/auth', authRouter(access));
   api.use('/users', usersRouter(access));
   api.use('/', registryRouter({ db }));
-  api.use('/', periodsRouter({ db, hooks: periodHooks }));
+  const hooks = periodHooks ?? { ...emptyPeriodHooks(), versionCopiers: [copyPeriodEvidence] };
+  api.use('/', periodsRouter({ db, hooks }));
   api.use('/', libraryRouter({ db }));
   api.use('/', overridesRouter({ db }));
+  api.use('/', evidenceRouter({ db, files }));
+  api.use('/', verificationRouter({ db }));
+  api.use('/', auditRouter({ db }));
 
   app.use('/api/v1', api);
   app.use(notFound);
