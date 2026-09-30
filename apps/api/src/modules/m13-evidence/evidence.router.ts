@@ -114,6 +114,7 @@ export function evidenceRouter({ db, files }: { db: Db; files: FileStore }): Rou
       bytes: Number(d.bytes),
       sha256: d.sha256,
       uploadedAt: d.created_at.toISOString(),
+      uploadedById: d.created_by,
       uploadedBy: names.get(d.created_by) ?? null,
       locked: lockedIds.has(d.id),
       links: links

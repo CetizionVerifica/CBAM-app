@@ -44,6 +44,7 @@ export const PERMISSIONS = {
   // have their own role lists (PERIOD_TRANSITIONS in periods.ts).
   'periods.manage': ['platform_admin', 'consultant'],
   // M13: upload and link evidence; edit or delete any file (contributors: their own uploads).
+  'evidence.read': ['platform_admin', 'consultant', 'contributor', 'reviewer'],
   'evidence.upload': ['platform_admin', 'consultant', 'contributor'],
   'evidence.manage': ['platform_admin', 'consultant'],
   // M13-R7: verifier details and opinion; approvals by the consultant and by a client user.

@@ -101,6 +101,7 @@ export interface EvidenceSummary {
   bytes: number;
   sha256: string;
   uploadedAt: string;
+  uploadedById: string;
   uploadedBy: string | null;
   links: EvidenceLinkSummary[];
   /** Supports an approved or issued period: cannot be changed or deleted (M13-R4). */

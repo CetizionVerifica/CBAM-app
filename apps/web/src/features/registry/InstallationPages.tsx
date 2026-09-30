@@ -13,6 +13,7 @@ import { useToast } from '@/components/Toast';
 import { api } from '@/lib/api';
 import { useCountryName } from '@/lib/reference';
 import { useMe } from '@/lib/session';
+import { EvidencePanel } from '@/features/evidence/EvidencePanel';
 import { PeriodsPanel } from '@/features/periods/PeriodsPanel';
 import { keys, useClient, useInstallation } from './queries';
 import { INSTALLATION_SECTIONS } from './sections';
@@ -114,6 +115,7 @@ export function InstallationPage() {
           }}
         />
         <PeriodsPanel installationId={installationId} />
+        <EvidencePanel clientId={clientId} installationId={installationId} recordType="installation" recordId={installationId} />
       </div>
       {deleting && (
         <ConfirmDialog
