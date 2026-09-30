@@ -5,6 +5,7 @@ import type {
   GoodsCategoryEntry,
   LibraryDiff,
   LibraryFactor,
+  LibrarySettings,
   LibraryVersionSummary,
   TemplateVersionEntry,
 } from '@cbam/shared';
@@ -18,6 +19,7 @@ export const libraryKeys = {
   cnCodes: (id: string) => ['library', 'versions', id, 'cn-codes'] as const,
   goods: (id: string) => ['library', 'versions', id, 'goods'] as const,
   diff: (id: string) => ['library', 'versions', id, 'diff'] as const,
+  settings: (id: string) => ['library', 'versions', id, 'settings'] as const,
   templates: ['library', 'templates'] as const,
   overrides: (clientId: string) => ['clients', clientId, 'factor-overrides'] as const,
 };
@@ -47,6 +49,14 @@ export const useGoods = (versionId: string) =>
   useQuery({
     queryKey: libraryKeys.goods(versionId),
     queryFn: async () => (await api.get<{ goods: GoodsCategoryEntry[] }>(`/library/versions/${versionId}/goods`)).goods,
+    enabled: !!versionId,
+  });
+
+/** Versioned settings such as the production balance tolerance (D19). */
+export const useLibrarySettings = (versionId: string) =>
+  useQuery({
+    queryKey: libraryKeys.settings(versionId),
+    queryFn: async () => (await api.get<{ settings: LibrarySettings }>(`/library/versions/${versionId}/settings`)).settings,
     enabled: !!versionId,
   });
 

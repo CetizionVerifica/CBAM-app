@@ -30,7 +30,7 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | M2 | Client and installation registry | 1 Foundation | **Built** (R3 defaults → M4/M9; R6 period check done in M3); review: Ready | see below | see below | see below |
 | M3 | Reporting period manager | 1 Foundation | **Built** (R6 set-up copy → M5/M6; R7 guard → M11; D6); review: Ready (see `M03.md`) | see below | see below | see below |
 | M4 | Reference library | 1 Foundation | **Built** (R3 period pinning done in M3; engine use of overrides → M10); review: see `M04.md` | see below | see below | see below |
-| M5 | Process and goods set-up | 2 Calculation core | Missing | — | — | — |
+| M5 | Process and goods set-up | 2 Calculation core | **Built** (M11 persistence of checks → M11, D20); review: see `M05.md` | see below | see below | see below |
 | M6 | Direct emissions | 2 Calculation core | Missing | — | — | — |
 | M7 | Energy flows | 2 Calculation core | Missing | — | — | — |
 | M8 | Precursor chain | 2 Calculation core | Missing | — | — | — |
@@ -89,6 +89,17 @@ So all 13 modules are **Missing**: no files, no routes, no tables. Nothing is pa
 | Tables | `template_version`, `library_version`, `goods_category`, `production_route`, `route_relevant_precursor`, `qualifying_parameter_def`, `cn_code`, `library_factor`, `library_import`, `client_factor_override` (migration `20260929000004_m04_reference.sql`) |
 | Screens | Reference library (tabs: Emission factors, NCVs, Grid factors, GWPs, Default values, CN codes, Goods and routes, Templates; draft editing, import, publish), Factor overrides panel on the client profile |
 | Review | `docs/reviews/M04.md` |
+
+## M5 — as built
+
+| Kind | Items |
+|---|---|
+| Files | `apps/api/src/modules/m05-processes/` (`processes.router.ts`, `load.ts`, `dependents.ts`, `copiers.ts`, `issues.ts`), `packages/shared/src/processes.ts`, `apps/web/src/features/processes/`, `docs/plans/phase-2.md` (D16–D23), `docs/mappings/template-D_Processes.md` |
+| Routes | `GET/POST /api/v1/period-versions/:id/processes`, `GET/PATCH/DELETE /processes/:id`, `PUT /processes/:id/production`, `POST /processes/:id/{goods,complete}`, `PATCH/DELETE /process-goods/:id`, `PUT /process-goods/:id/data`; M4 additions `PUT /library/goods-categories/:id/qualifying-parameters`, `GET/PATCH /library/versions/:id/settings` |
+| Tables | `production_process`, `process_included_category`, `process_route`, `process_good`, `process_good_parameter`, `process_internal_use`; M4: `library_setting`, new columns on `qualifying_parameter_def` (migration `20260930000001_m05_processes.sql`) |
+| Hooks | clone copies the set-up (`copyProcessSetup`), new versions copy all data and evidence links (`copyProcessData`); `processIssues` for M11; `ProcessDependents` for M6–M9 |
+| Screens | Process builder (process list, process detail: set-up, production, goods and qualifying parameters, balance, checks, evidence); library: qualifying parameter definitions and balance tolerance |
+| Review | `docs/reviews/M05.md` |
 
 ## Expected locations (planned, not found)
 

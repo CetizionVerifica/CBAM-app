@@ -226,6 +226,19 @@ export function PeriodPage() {
           </section>
         )}
 
+        {can(me.user.role, 'processes.read') && (
+          <section className="mb-8">
+            <h2 className="mb-1 text-h2 font-semibold text-ink">Processes and goods</h2>
+            <p className="mb-2 text-body text-ink-muted">Production processes, routes, CN codes and qualifying parameters of version {version.versionNo}.</p>
+            <Link
+              className="text-body font-semibold text-action underline"
+              to={`/periods/${periodId}/processes${isLatest ? '' : `?version=${version.versionNo}`}`}
+            >
+              Open processes and goods
+            </Link>
+          </section>
+        )}
+
         <section className="mb-8">
           <h2 className="mb-3 text-h2 font-semibold text-ink">Verification</h2>
           <VerificationSection key={version.id} versionId={version.id} locked={locked} />
@@ -292,11 +305,12 @@ export function PeriodPage() {
           initial={{ startDate: cloneStart, justification: p.justification }}
           onClose={() => setDialog(null)}
           onSubmit={async (input) => {
-            const { period: next } = await api.post<{ period: PeriodDetail }>(`/periods/${periodId}/clone`, input);
+            const { period: next, notes = [] } = await api.post<{ period: PeriodDetail; notes?: string[] }>(`/periods/${periodId}/clone`, input);
             qc.setQueryData(periodKeys.period(next.id), next);
             void qc.invalidateQueries({ queryKey: periodKeys.ofInstallation(next.installationId) });
             setDialog(null);
-            toast('Period cloned');
+            // D23: set-up the new period's library no longer has is skipped; say what.
+            toast(notes.length ? `Period cloned. Not copied: ${notes.join(' ')}` : 'Period cloned');
             navigate(`/periods/${next.id}`);
           }}
         />
